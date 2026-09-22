@@ -1,0 +1,3 @@
+# OLED pages advance on button press, not a timer
+
+The initial task brief for this project assumed the OLED would auto-cycle through its pages on a timer. Reading the original Python implementation (`pm_auto`) showed this isn't how the hardware actually behaves: whole-page advance only happens on a power-button press event (`click` = next, `double-click` = previous); the display sleeps after a fixed timeout with no input; and only *content within* a page (e.g. multiple IPs or disks) scrolls on its own timer. We chose to match the original's button-driven behavior rather than build the timer-based auto-cycle the brief described, since that's existing, tested UX from the hardware this case ships with, and diverging silently would surprise anyone who's used the original.
