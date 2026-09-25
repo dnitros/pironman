@@ -7,9 +7,6 @@ import (
 	"time"
 )
 
-// fakeConn is a hand-rolled net.Conn double (no real socket): it lets these
-// tests check deadline handling deterministically and fast, without relying
-// on real, OS-dependent socket timing or buffering.
 type fakeConn struct {
 	readBuf bytes.Reader
 

@@ -20,9 +20,6 @@ func newDaemonCmd() *cobra.Command {
 	return cmd
 }
 
-// newDaemonRunCmd is the daemon's own entrypoint, invoked by the systemd
-// unit's ExecStart — hidden since it's not meant to be discovered as a
-// normal user-facing subcommand.
 func newDaemonRunCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:    "run",

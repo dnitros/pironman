@@ -12,9 +12,6 @@ import (
 	"github.com/dnitros/pironman/internal/ipc"
 )
 
-// shortSocketDir returns a temp dir outside t.TempDir(), which embeds the
-// test name and can push the socket path past macOS's ~104-byte sun_path
-// limit for tests with longer names.
 func shortSocketDir(t *testing.T) string {
 	t.Helper()
 
@@ -91,8 +88,6 @@ func TestListenSetsSocketPermissions(t *testing.T) {
 func TestListenRemovesActuallyStaleSocket(t *testing.T) {
 	path := filepath.Join(shortSocketDir(t), "pironman.sock")
 
-	// Simulate a leftover socket file with no live listener behind it, e.g.
-	// the daemon crashed without a clean shutdown.
 	if err := os.WriteFile(path, nil, 0o660); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}

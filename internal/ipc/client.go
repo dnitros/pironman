@@ -8,8 +8,6 @@ import (
 	"time"
 )
 
-// Send opens one connection to the daemon at path and exchanges one
-// request/response pair (per ADR-0001's one-shot connection lifecycle).
 func Send(path, cmd string, args map[string]any) (*Response, error) {
 	conn, err := net.Dial("unix", path)
 	if err != nil {
@@ -21,8 +19,6 @@ func Send(path, cmd string, args map[string]any) (*Response, error) {
 }
 
 func sendOnConn(conn net.Conn, cmd string, args map[string]any) (*Response, error) {
-	// Bounds both the write and the read below, so a daemon that's alive
-	// but not draining connections can't hang the CLI either way.
 	if err := conn.SetDeadline(time.Now().Add(ioTimeout)); err != nil {
 		return nil, fmt.Errorf("set deadline: %w", err)
 	}

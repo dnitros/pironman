@@ -16,20 +16,15 @@ import (
 	"time"
 )
 
-// Server accepts one connection per request (per ADR-0001) and dispatches
-// each decoded command to the matching registered Handler.
 type Server struct {
 	ln       net.Listener
 	handlers map[string]Handler
 }
 
-// NewServer registers the given command handlers.
 func NewServer(handlers map[string]Handler) *Server {
 	return &Server{handlers: handlers}
 }
 
-// Listen opens the Unix socket at path, creating its parent directory and
-// clearing a stale socket left by a previous run.
 func (s *Server) Listen(path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create socket dir: %w", err)
@@ -50,9 +45,6 @@ func (s *Server) Listen(path string) error {
 	return nil
 }
 
-// removeStaleSocket clears a socket file left by a previous run, but
-// refuses to touch one a live daemon is still listening on — otherwise a
-// second `daemon run` would silently steal the first instance's socket.
 func removeStaleSocket(path string) error {
 	conn, err := net.DialTimeout("unix", path, 200*time.Millisecond)
 	if err == nil {
@@ -66,20 +58,12 @@ func removeStaleSocket(path string) error {
 	return nil
 }
 
-// listenRestricted binds the socket under a restrictive umask, so ADR-0002's
-// 0660 permissions apply from the socket's first instant. Safe because
-// Listen runs once at daemon startup, before any other goroutine creates
-// files; umask is process-wide.
 func listenRestricted(path string) (net.Listener, error) {
-	old := syscall.Umask(0o117) // 0777 (bind's default) &^ 0117 = 0660
+	old := syscall.Umask(0o117)
 	defer syscall.Umask(old)
 	return net.Listen("unix", path)
 }
 
-// restrictSocketAccess applies ADR-0002's root:pironman group ownership; the
-// 0660 mode is set by listenRestricted's umask. Chown is best-effort: the
-// pironman group is created by `daemon install`, so it won't exist yet on a
-// dev machine or before that step has run, and that's not fatal here.
 func restrictSocketAccess(path string) error {
 	grp, err := user.LookupGroup("pironman")
 	if err != nil {
@@ -95,7 +79,6 @@ func restrictSocketAccess(path string) error {
 	return nil
 }
 
-// Serve accepts connections until ctx is canceled or the listener is closed.
 func (s *Server) Serve(ctx context.Context) error {
 	go func() {
 		<-ctx.Done()
@@ -116,7 +99,6 @@ func (s *Server) Serve(ctx context.Context) error {
 	}
 }
 
-// Close stops accepting new connections.
 func (s *Server) Close() error {
 	return s.ln.Close()
 }
@@ -124,9 +106,6 @@ func (s *Server) Close() error {
 func (s *Server) handleConn(conn net.Conn) {
 	defer conn.Close()
 
-	// Bounds the whole request/response exchange, mirroring the client's
-	// own deadline: an accepted-but-silent connection, or one that stops
-	// draining its response, can't hold this goroutine open forever.
 	if err := conn.SetDeadline(time.Now().Add(ioTimeout)); err != nil {
 		return
 	}
