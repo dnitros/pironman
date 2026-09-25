@@ -12,6 +12,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"strconv"
+	"syscall"
 	"time"
 )
 
@@ -33,11 +34,11 @@ func (s *Server) Listen(path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("create socket dir: %w", err)
 	}
-	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("remove stale socket: %w", err)
+	if err := removeStaleSocket(path); err != nil {
+		return err
 	}
 
-	ln, err := net.Listen("unix", path)
+	ln, err := listenRestricted(path)
 	if err != nil {
 		return fmt.Errorf("listen on %s: %w", path, err)
 	}
@@ -49,15 +50,39 @@ func (s *Server) Listen(path string) error {
 	return nil
 }
 
-// restrictSocketAccess applies ADR-0002's root:pironman 0660 socket
-// permissions. Chown is best-effort: the pironman group is created by
+// removeStaleSocket clears a socket file left by a previous run, but
+// refuses to touch one a live daemon is still listening on — otherwise a
+// second `daemon run` would silently steal the first instance's socket.
+func removeStaleSocket(path string) error {
+	conn, err := net.DialTimeout("unix", path, 200*time.Millisecond)
+	if err == nil {
+		conn.Close()
+		return fmt.Errorf("a daemon is already listening on %s", path)
+	}
+
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove stale socket: %w", err)
+	}
+	return nil
+}
+
+// listenRestricted binds the socket with a restrictive umask already in
+// place, so its file is never briefly world-accessible between bind() and
+// a later chmod (ADR-0002's 0660 applies from its very first instant, not
+// as a follow-up step). Safe here because Listen runs once at daemon
+// startup, before any other goroutine creates files; umask is process-wide.
+func listenRestricted(path string) (net.Listener, error) {
+	old := syscall.Umask(0o117) // 0777 (bind's default) &^ 0117 = 0660
+	defer syscall.Umask(old)
+	return net.Listen("unix", path)
+}
+
+// restrictSocketAccess applies ADR-0002's root:pironman group ownership —
+// the 0660 mode itself is already guaranteed at creation by listenRestricted's
+// umask. Chown is best-effort: the pironman group is created by
 // `daemon install`, so it won't exist yet on a dev machine or before that
 // step has run, and that's not fatal here.
 func restrictSocketAccess(path string) error {
-	if err := os.Chmod(path, 0o660); err != nil {
-		return err
-	}
-
 	grp, err := user.LookupGroup("pironman")
 	if err != nil {
 		return nil
@@ -101,9 +126,10 @@ func (s *Server) Close() error {
 func (s *Server) handleConn(conn net.Conn) {
 	defer conn.Close()
 
-	// Bounds how long an accepted-but-silent connection can hold a
-	// goroutine open, mirroring the client's own deadline.
-	if err := conn.SetReadDeadline(time.Now().Add(ioTimeout)); err != nil {
+	// Bounds the whole request/response exchange, mirroring the client's
+	// own deadline: an accepted-but-silent connection, or one that stops
+	// draining its response, can't hold this goroutine open forever.
+	if err := conn.SetDeadline(time.Now().Add(ioTimeout)); err != nil {
 		return
 	}
 

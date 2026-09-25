@@ -13,6 +13,20 @@ import (
 	"github.com/dnitros/pironman/internal/ipc"
 )
 
+// shortSocketDir returns a temp dir outside t.TempDir(), which embeds the
+// test name and can push the socket path past macOS's ~104-byte sun_path
+// limit for tests with longer names.
+func shortSocketDir(t *testing.T) string {
+	t.Helper()
+
+	dir, err := os.MkdirTemp("", "ipc")
+	if err != nil {
+		t.Fatalf("MkdirTemp: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	return dir
+}
+
 func startTestServer(t *testing.T, handlers map[string]ipc.Handler) string {
 	t.Helper()
 
@@ -58,14 +72,7 @@ func TestPingRoundTrip(t *testing.T) {
 }
 
 func TestListenSetsSocketPermissions(t *testing.T) {
-	// A short path, not t.TempDir(): this test's long name would push
-	// t.TempDir()'s path past macOS's ~104-byte sun_path limit.
-	dir, err := os.MkdirTemp("", "ipc-perms")
-	if err != nil {
-		t.Fatalf("MkdirTemp: %v", err)
-	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
-	path := filepath.Join(dir, "pironman.sock")
+	path := filepath.Join(shortSocketDir(t), "pironman.sock")
 
 	srv := ipc.NewServer(nil)
 	if err := srv.Listen(path); err != nil {
@@ -79,6 +86,37 @@ func TestListenSetsSocketPermissions(t *testing.T) {
 	}
 	if got := info.Mode().Perm(); got != 0o660 {
 		t.Fatalf("expected socket mode 0660 per ADR-0002, got %o", got)
+	}
+}
+
+func TestListenRemovesActuallyStaleSocket(t *testing.T) {
+	path := filepath.Join(shortSocketDir(t), "pironman.sock")
+
+	// Simulate a leftover socket file with no live listener behind it, e.g.
+	// the daemon crashed without a clean shutdown.
+	if err := os.WriteFile(path, nil, 0o660); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	srv := ipc.NewServer(nil)
+	if err := srv.Listen(path); err != nil {
+		t.Fatalf("expected Listen to clear a genuinely stale socket, got: %v", err)
+	}
+	t.Cleanup(func() { srv.Close() })
+}
+
+func TestListenRefusesLiveSocket(t *testing.T) {
+	path := filepath.Join(shortSocketDir(t), "pironman.sock")
+
+	first := ipc.NewServer(nil)
+	if err := first.Listen(path); err != nil {
+		t.Fatalf("Listen (first): %v", err)
+	}
+	t.Cleanup(func() { first.Close() })
+
+	second := ipc.NewServer(nil)
+	if err := second.Listen(path); err == nil {
+		t.Fatalf("expected Listen to refuse a socket a live daemon is already using")
 	}
 }
 
@@ -128,14 +166,7 @@ func TestMalformedJSON(t *testing.T) {
 }
 
 func TestClientReadDeadlineExceeded(t *testing.T) {
-	// A short path, not t.TempDir(): this test's long name would push
-	// t.TempDir()'s path past macOS's ~104-byte sun_path limit.
-	dir, err := os.MkdirTemp("", "ipc-deadline")
-	if err != nil {
-		t.Fatalf("MkdirTemp: %v", err)
-	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
-	path := filepath.Join(dir, "pironman.sock")
+	path := filepath.Join(shortSocketDir(t), "pironman.sock")
 	ln, err := net.Listen("unix", path)
 	if err != nil {
 		t.Fatalf("Listen: %v", err)
