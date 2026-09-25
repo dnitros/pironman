@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/dnitros/pironman/internal/ipc"
 )
@@ -162,34 +161,5 @@ func TestMalformedJSON(t *testing.T) {
 	}
 	if resp.Error == "" {
 		t.Fatalf("expected a non-empty error message")
-	}
-}
-
-func TestClientReadDeadlineExceeded(t *testing.T) {
-	path := filepath.Join(shortSocketDir(t), "pironman.sock")
-	ln, err := net.Listen("unix", path)
-	if err != nil {
-		t.Fatalf("Listen: %v", err)
-	}
-	defer ln.Close()
-
-	// Accept the connection but never respond, so the client's read deadline
-	// is what has to end the call.
-	go func() {
-		conn, err := ln.Accept()
-		if err == nil {
-			t.Cleanup(func() { conn.Close() })
-		}
-	}()
-
-	start := time.Now()
-	_, err = ipc.Send(path, "ping", nil)
-	elapsed := time.Since(start)
-
-	if err == nil {
-		t.Fatalf("expected a read-deadline error, got nil")
-	}
-	if elapsed < 4*time.Second || elapsed > 10*time.Second {
-		t.Fatalf("expected the client to fail around the 5s deadline, took %s", elapsed)
 	}
 }

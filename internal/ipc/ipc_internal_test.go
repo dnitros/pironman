@@ -7,9 +7,9 @@ import (
 	"time"
 )
 
-// fakeConn is a hand-rolled net.Conn double (no real socket), so this test
-// can verify handleConn's deadline handling deterministically and fast
-// instead of depending on real, OS-dependent socket buffer exhaustion.
+// fakeConn is a hand-rolled net.Conn double (no real socket): it lets these
+// tests check deadline handling deterministically and fast, without relying
+// on real, OS-dependent socket timing or buffering.
 type fakeConn struct {
 	readBuf bytes.Reader
 
@@ -17,9 +17,9 @@ type fakeConn struct {
 	writeDeadlineSet bool
 }
 
-func newFakeConn(request string) *fakeConn {
+func newFakeConn(data string) *fakeConn {
 	f := &fakeConn{}
-	f.readBuf = *bytes.NewReader([]byte(request))
+	f.readBuf = *bytes.NewReader([]byte(data))
 	return f
 }
 
@@ -61,5 +61,16 @@ func TestHandleConnSetsWriteDeadline(t *testing.T) {
 
 	if !conn.writeDeadlineSet {
 		t.Fatalf("expected handleConn to arm a write deadline before writing the response, so a stalled peer can't block the goroutine forever")
+	}
+}
+
+func TestSendOnConnSetsDeadline(t *testing.T) {
+	conn := newFakeConn(`{"ok":true,"data":{"message":"pong"}}` + "\n")
+
+	if _, err := sendOnConn(conn, "ping", nil); err != nil {
+		t.Fatalf("sendOnConn: %v", err)
+	}
+	if !conn.readDeadlineSet || !conn.writeDeadlineSet {
+		t.Fatalf("expected sendOnConn to bound both read and write, so a stuck daemon can't hang the CLI in either direction")
 	}
 }

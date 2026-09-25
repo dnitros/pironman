@@ -66,22 +66,20 @@ func removeStaleSocket(path string) error {
 	return nil
 }
 
-// listenRestricted binds the socket with a restrictive umask already in
-// place, so its file is never briefly world-accessible between bind() and
-// a later chmod (ADR-0002's 0660 applies from its very first instant, not
-// as a follow-up step). Safe here because Listen runs once at daemon
-// startup, before any other goroutine creates files; umask is process-wide.
+// listenRestricted binds the socket under a restrictive umask, so ADR-0002's
+// 0660 permissions apply from the socket's first instant. Safe because
+// Listen runs once at daemon startup, before any other goroutine creates
+// files; umask is process-wide.
 func listenRestricted(path string) (net.Listener, error) {
 	old := syscall.Umask(0o117) // 0777 (bind's default) &^ 0117 = 0660
 	defer syscall.Umask(old)
 	return net.Listen("unix", path)
 }
 
-// restrictSocketAccess applies ADR-0002's root:pironman group ownership —
-// the 0660 mode itself is already guaranteed at creation by listenRestricted's
-// umask. Chown is best-effort: the pironman group is created by
-// `daemon install`, so it won't exist yet on a dev machine or before that
-// step has run, and that's not fatal here.
+// restrictSocketAccess applies ADR-0002's root:pironman group ownership; the
+// 0660 mode is set by listenRestricted's umask. Chown is best-effort: the
+// pironman group is created by `daemon install`, so it won't exist yet on a
+// dev machine or before that step has run, and that's not fatal here.
 func restrictSocketAccess(path string) error {
 	grp, err := user.LookupGroup("pironman")
 	if err != nil {
