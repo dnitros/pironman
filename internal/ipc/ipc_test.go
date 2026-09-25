@@ -1,0 +1,164 @@
+package ipc_test
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"net"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/dnitros/pironman/internal/ipc"
+)
+
+func startTestServer(t *testing.T, handlers map[string]ipc.Handler) string {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), "pironman.sock")
+	srv := ipc.NewServer(handlers)
+	if err := srv.Listen(path); err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		srv.Serve(ctx)
+		close(done)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
+
+	return path
+}
+
+func TestPingRoundTrip(t *testing.T) {
+	path := startTestServer(t, map[string]ipc.Handler{
+		"ping": func(args map[string]any) (any, error) {
+			return map[string]string{"message": "pong"}, nil
+		},
+	})
+
+	resp, err := ipc.Send(path, "ping", nil)
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if !resp.OK {
+		t.Fatalf("expected ok=true, got error %q", resp.Error)
+	}
+
+	data, ok := resp.Data.(map[string]any)
+	if !ok || data["message"] != "pong" {
+		t.Fatalf("expected data.message=pong, got %#v", resp.Data)
+	}
+}
+
+func TestListenSetsSocketPermissions(t *testing.T) {
+	// A short path, not t.TempDir(): this test's long name would push
+	// t.TempDir()'s path past macOS's ~104-byte sun_path limit.
+	dir, err := os.MkdirTemp("", "ipc-perms")
+	if err != nil {
+		t.Fatalf("MkdirTemp: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	path := filepath.Join(dir, "pironman.sock")
+
+	srv := ipc.NewServer(nil)
+	if err := srv.Listen(path); err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	t.Cleanup(func() { srv.Close() })
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("Stat: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o660 {
+		t.Fatalf("expected socket mode 0660 per ADR-0002, got %o", got)
+	}
+}
+
+func TestUnknownCommand(t *testing.T) {
+	path := startTestServer(t, map[string]ipc.Handler{})
+
+	resp, err := ipc.Send(path, "bogus", nil)
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if resp.OK {
+		t.Fatalf("expected ok=false for unknown command")
+	}
+	if resp.Error == "" {
+		t.Fatalf("expected a non-empty error message")
+	}
+}
+
+func TestMalformedJSON(t *testing.T) {
+	path := startTestServer(t, map[string]ipc.Handler{})
+
+	conn, err := net.Dial("unix", path)
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer conn.Close()
+
+	if _, err := conn.Write([]byte("not json\n")); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	line, err := bufio.NewReader(conn).ReadBytes('\n')
+	if err != nil {
+		t.Fatalf("ReadBytes: %v", err)
+	}
+
+	var resp ipc.Response
+	if err := json.Unmarshal(line, &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.OK {
+		t.Fatalf("expected ok=false for malformed JSON")
+	}
+	if resp.Error == "" {
+		t.Fatalf("expected a non-empty error message")
+	}
+}
+
+func TestClientReadDeadlineExceeded(t *testing.T) {
+	// A short path, not t.TempDir(): this test's long name would push
+	// t.TempDir()'s path past macOS's ~104-byte sun_path limit.
+	dir, err := os.MkdirTemp("", "ipc-deadline")
+	if err != nil {
+		t.Fatalf("MkdirTemp: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	path := filepath.Join(dir, "pironman.sock")
+	ln, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	defer ln.Close()
+
+	// Accept the connection but never respond, so the client's read deadline
+	// is what has to end the call.
+	go func() {
+		conn, err := ln.Accept()
+		if err == nil {
+			t.Cleanup(func() { conn.Close() })
+		}
+	}()
+
+	start := time.Now()
+	_, err = ipc.Send(path, "ping", nil)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatalf("expected a read-deadline error, got nil")
+	}
+	if elapsed < 4*time.Second || elapsed > 10*time.Second {
+		t.Fatalf("expected the client to fail around the 5s deadline, took %s", elapsed)
+	}
+}
