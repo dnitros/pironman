@@ -171,6 +171,96 @@ func TestDaemonStopSucceedsWhenInstalled(t *testing.T) {
 	}
 }
 
+func stubAddUserToGroup(t *testing.T, err error) *string {
+	t.Helper()
+	var got string
+	old := addUserToGroup
+	addUserToGroup = func(user string) error {
+		got = user
+		return err
+	}
+	t.Cleanup(func() { addUserToGroup = old })
+	return &got
+}
+
+func stubIsUserInGroup(t *testing.T, member bool, err error) {
+	t.Helper()
+	old := isUserInGroup
+	isUserInGroup = func(string, string) (bool, error) { return member, err }
+	t.Cleanup(func() { isUserInGroup = old })
+}
+
+func TestDaemonInstallAddsSudoUserToGroup(t *testing.T) {
+	asRoot(t)
+	t.Setenv("SUDO_USER", "pi")
+	stubIsUserInGroup(t, false, nil)
+	calledWith := stubAddUserToGroup(t, nil)
+	mgr := &fakeServiceManager{}
+
+	if err := runDaemonInstall(mgr); err != nil {
+		t.Fatalf("runDaemonInstall: %v", err)
+	}
+	if *calledWith != "pi" {
+		t.Fatalf("expected addUserToGroup to be called with %q, got %q", "pi", *calledWith)
+	}
+}
+
+func TestDaemonInstallSkipsGroupAddWithoutSudoUser(t *testing.T) {
+	asRoot(t)
+	t.Setenv("SUDO_USER", "")
+	calledWith := stubAddUserToGroup(t, nil)
+	mgr := &fakeServiceManager{}
+
+	if err := runDaemonInstall(mgr); err != nil {
+		t.Fatalf("runDaemonInstall: %v", err)
+	}
+	if *calledWith != "" {
+		t.Fatalf("expected addUserToGroup to not be called, got user %q", *calledWith)
+	}
+}
+
+func TestDaemonInstallSucceedsWhenGroupAddFails(t *testing.T) {
+	asRoot(t)
+	t.Setenv("SUDO_USER", "pi")
+	stubIsUserInGroup(t, false, nil)
+	stubAddUserToGroup(t, errBoom)
+	mgr := &fakeServiceManager{}
+
+	if err := runDaemonInstall(mgr); err != nil {
+		t.Fatalf("expected runDaemonInstall to succeed even when the group-add fails, got: %v", err)
+	}
+}
+
+func TestDaemonInstallSkipsAddWhenAlreadyMember(t *testing.T) {
+	asRoot(t)
+	t.Setenv("SUDO_USER", "pi")
+	stubIsUserInGroup(t, true, nil)
+	calledWith := stubAddUserToGroup(t, nil)
+	mgr := &fakeServiceManager{}
+
+	if err := runDaemonInstall(mgr); err != nil {
+		t.Fatalf("runDaemonInstall: %v", err)
+	}
+	if *calledWith != "" {
+		t.Fatalf("expected addUserToGroup to not be called when already a member, got user %q", *calledWith)
+	}
+}
+
+func TestDaemonInstallAttemptsAddWhenMembershipCheckFails(t *testing.T) {
+	asRoot(t)
+	t.Setenv("SUDO_USER", "pi")
+	stubIsUserInGroup(t, false, errBoom)
+	calledWith := stubAddUserToGroup(t, nil)
+	mgr := &fakeServiceManager{}
+
+	if err := runDaemonInstall(mgr); err != nil {
+		t.Fatalf("runDaemonInstall: %v", err)
+	}
+	if *calledWith != "pi" {
+		t.Fatalf("expected addUserToGroup to still be attempted when the membership check errors, got %q", *calledWith)
+	}
+}
+
 func TestGroupJoinHintUsesSudoUser(t *testing.T) {
 	t.Setenv("SUDO_USER", "pi")
 
