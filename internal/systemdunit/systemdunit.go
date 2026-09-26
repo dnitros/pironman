@@ -37,6 +37,8 @@ type Manager interface {
 	Uninstall() error
 	Start() error
 	Stop() error
+	Enable() error
+	Disable() error
 	IsInstalled() (bool, error)
 	IsActive() (bool, error)
 }
@@ -77,6 +79,7 @@ func (SystemdManager) Install(unitContent string) error {
 
 func (SystemdManager) Uninstall() error {
 	_ = runSystemctl("stop", ServiceName)
+	_ = runSystemctl("disable", ServiceName)
 
 	if err := os.Remove(UnitPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("remove unit file: %w", err)
@@ -105,6 +108,14 @@ func (SystemdManager) Start() error {
 
 func (SystemdManager) Stop() error {
 	return runSystemctl("stop", ServiceName)
+}
+
+func (SystemdManager) Enable() error {
+	return runSystemctl("enable", ServiceName)
+}
+
+func (SystemdManager) Disable() error {
+	return runSystemctl("disable", ServiceName)
 }
 
 func runSystemctl(args ...string) error {

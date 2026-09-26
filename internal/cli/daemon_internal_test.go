@@ -9,10 +9,10 @@ type fakeServiceManager struct {
 	installed bool
 	active    bool
 
-	installErr, uninstallErr, startErr, stopErr, isInstalledErr, isActiveErr error
+	installErr, uninstallErr, startErr, stopErr, enableErr, disableErr, isInstalledErr, isActiveErr error
 
-	installCalled, uninstallCalled, startCalled, stopCalled bool
-	installContent                                          string
+	installCalled, uninstallCalled, startCalled, stopCalled, enableCalled, disableCalled bool
+	installContent                                                                       string
 }
 
 func (f *fakeServiceManager) IsInstalled() (bool, error) {
@@ -50,6 +50,16 @@ func (f *fakeServiceManager) Start() error {
 func (f *fakeServiceManager) Stop() error {
 	f.stopCalled = true
 	return f.stopErr
+}
+
+func (f *fakeServiceManager) Enable() error {
+	f.enableCalled = true
+	return f.enableErr
+}
+
+func (f *fakeServiceManager) Disable() error {
+	f.disableCalled = true
+	return f.disableErr
 }
 
 func asRoot(t *testing.T) {
@@ -168,6 +178,58 @@ func TestDaemonStopSucceedsWhenInstalled(t *testing.T) {
 	}
 	if !mgr.stopCalled {
 		t.Fatalf("expected Stop to be called")
+	}
+}
+
+func TestDaemonEnableFailsWhenNotInstalled(t *testing.T) {
+	mgr := &fakeServiceManager{installed: false}
+
+	err := runDaemonEnable(mgr)
+	if err == nil {
+		t.Fatalf("expected an error when the service isn't installed")
+	}
+	if !strings.Contains(err.Error(), "daemon install") {
+		t.Fatalf("expected error to point at `daemon install`, got: %v", err)
+	}
+	if mgr.enableCalled {
+		t.Fatalf("expected Enable to not be called when not installed")
+	}
+}
+
+func TestDaemonEnableSucceedsWhenInstalled(t *testing.T) {
+	mgr := &fakeServiceManager{installed: true}
+
+	if err := runDaemonEnable(mgr); err != nil {
+		t.Fatalf("runDaemonEnable: %v", err)
+	}
+	if !mgr.enableCalled {
+		t.Fatalf("expected Enable to be called")
+	}
+}
+
+func TestDaemonDisableFailsWhenNotInstalled(t *testing.T) {
+	mgr := &fakeServiceManager{installed: false}
+
+	err := runDaemonDisable(mgr)
+	if err == nil {
+		t.Fatalf("expected an error when the service isn't installed")
+	}
+	if !strings.Contains(err.Error(), "daemon install") {
+		t.Fatalf("expected error to point at `daemon install`, got: %v", err)
+	}
+	if mgr.disableCalled {
+		t.Fatalf("expected Disable to not be called when not installed")
+	}
+}
+
+func TestDaemonDisableSucceedsWhenInstalled(t *testing.T) {
+	mgr := &fakeServiceManager{installed: true}
+
+	if err := runDaemonDisable(mgr); err != nil {
+		t.Fatalf("runDaemonDisable: %v", err)
+	}
+	if !mgr.disableCalled {
+		t.Fatalf("expected Disable to be called")
 	}
 }
 

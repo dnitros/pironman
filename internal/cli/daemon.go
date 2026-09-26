@@ -28,6 +28,8 @@ func newDaemonCmd() *cobra.Command {
 	cmd.AddCommand(newDaemonUninstallCmd())
 	cmd.AddCommand(newDaemonStartCmd())
 	cmd.AddCommand(newDaemonStopCmd())
+	cmd.AddCommand(newDaemonEnableCmd())
+	cmd.AddCommand(newDaemonDisableCmd())
 	return cmd
 }
 
@@ -67,6 +69,26 @@ func newDaemonStopCmd() *cobra.Command {
 		Short: "Stop the installed pironman service",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDaemonStop(systemdunit.NewManager())
+		},
+	}
+}
+
+func newDaemonEnableCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "enable",
+		Short: "Enable the pironman service to start automatically on boot",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runDaemonEnable(systemdunit.NewManager())
+		},
+	}
+}
+
+func newDaemonDisableCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "disable",
+		Short: "Disable automatic startup of the pironman service on boot",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runDaemonDisable(systemdunit.NewManager())
 		},
 	}
 }
@@ -201,6 +223,32 @@ func runDaemonStop(mgr systemdunit.Manager) error {
 	}
 
 	fmt.Println("pironman service stopped")
+	return nil
+}
+
+func runDaemonEnable(mgr systemdunit.Manager) error {
+	if err := requireInstalled(mgr, "daemon enable"); err != nil {
+		return err
+	}
+
+	if err := mgr.Enable(); err != nil {
+		return fmt.Errorf("enable service: %w", err)
+	}
+
+	fmt.Println("pironman service enabled — it will start automatically on boot")
+	return nil
+}
+
+func runDaemonDisable(mgr systemdunit.Manager) error {
+	if err := requireInstalled(mgr, "daemon disable"); err != nil {
+		return err
+	}
+
+	if err := mgr.Disable(); err != nil {
+		return fmt.Errorf("disable service: %w", err)
+	}
+
+	fmt.Println("pironman service disabled — it will not start automatically on boot")
 	return nil
 }
 
