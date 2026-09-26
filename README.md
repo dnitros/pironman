@@ -39,7 +39,7 @@ sudo pironman daemon install
 sudo pironman daemon start
 ```
 
-`daemon install` creates the `pironman` group (see [ADR-0002](docs/adr/0002-socket-group-permissions.md)) and prints the command to add your user to it — run that, then start a new login session before using the CLI without `sudo`:
+`daemon install` creates the `pironman` group and adds the invoking user (`$SUDO_USER`) to it automatically (see [ADR-0002](docs/adr/0002-socket-group-permissions.md)) — start a new login session before using the CLI without `sudo`. If `$SUDO_USER` isn't set, or the automatic add fails, it prints the `usermod` command to run manually instead:
 
 ```sh
 sudo usermod -aG pironman <your-username>

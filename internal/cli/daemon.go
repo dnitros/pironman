@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
+	"os/user"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -95,8 +97,53 @@ func runDaemonInstall(mgr systemdunit.Manager) error {
 	}
 
 	fmt.Println("pironman service installed")
-	fmt.Println(groupJoinHint())
+
+	sudoUser := os.Getenv("SUDO_USER")
+	if sudoUser == "" {
+		fmt.Println(groupJoinHint())
+		return nil
+	}
+
+	if alreadyMember, _ := isUserInGroup(sudoUser, ipc.GroupName); alreadyMember {
+		return nil
+	}
+
+	if err := addUserToGroup(sudoUser); err != nil {
+		fmt.Printf("could not add %s to the %s group automatically: %v\n", sudoUser, ipc.GroupName, err)
+		fmt.Println(groupJoinHint())
+		return nil
+	}
+
+	fmt.Printf("added %s to the %s group — log out and back in for it to take effect\n", sudoUser, ipc.GroupName)
 	return nil
+}
+
+var addUserToGroup = func(username string) error {
+	if err := exec.Command("usermod", "-aG", ipc.GroupName, username).Run(); err != nil {
+		return fmt.Errorf("usermod -aG %s %s: %w", ipc.GroupName, username, err)
+	}
+	return nil
+}
+
+var isUserInGroup = func(username, groupName string) (bool, error) {
+	u, err := user.Lookup(username)
+	if err != nil {
+		return false, fmt.Errorf("look up user %s: %w", username, err)
+	}
+	g, err := user.LookupGroup(groupName)
+	if err != nil {
+		return false, fmt.Errorf("look up group %s: %w", groupName, err)
+	}
+	gids, err := u.GroupIds()
+	if err != nil {
+		return false, fmt.Errorf("look up groups for %s: %w", username, err)
+	}
+	for _, gid := range gids {
+		if gid == g.Gid {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func groupJoinHint() string {
