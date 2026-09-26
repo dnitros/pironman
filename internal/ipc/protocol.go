@@ -9,6 +9,8 @@ const DefaultSocketPath = "/run/pironman/pironman.sock"
 
 const SocketPathEnvVar = "PIRONMAN_SOCKET_PATH"
 
+const GroupName = "pironman"
+
 const ioTimeout = 5 * time.Second
 
 func SocketPath() string {

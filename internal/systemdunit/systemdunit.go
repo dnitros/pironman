@@ -1,0 +1,102 @@
+package systemdunit
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"os/user"
+	"strings"
+
+	"github.com/dnitros/pironman/internal/ipc"
+)
+
+const (
+	UnitPath    = "/etc/systemd/system/pironman.service"
+	ServiceName = "pironman"
+)
+
+const unitTemplate = `[Unit]
+Description=Pironman 5 case daemon
+After=network.target
+
+[Service]
+ExecStart=%s daemon run
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+`
+
+func UnitContent(execPath string) string {
+	return fmt.Sprintf(unitTemplate, execPath)
+}
+
+type Manager interface {
+	Install(unitContent string) error
+	Uninstall() error
+	Start() error
+	Stop() error
+	IsInstalled() (bool, error)
+}
+
+type SystemdManager struct{}
+
+func NewManager() Manager {
+	return SystemdManager{}
+}
+
+func (SystemdManager) IsInstalled() (bool, error) {
+	_, err := os.Stat(UnitPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("stat %s: %w", UnitPath, err)
+	}
+	return true, nil
+}
+
+func (SystemdManager) Install(unitContent string) error {
+	var unknownGroupErr user.UnknownGroupError
+	if _, err := user.LookupGroup(ipc.GroupName); errors.As(err, &unknownGroupErr) {
+		if err := exec.Command("groupadd", ipc.GroupName).Run(); err != nil {
+			return fmt.Errorf("create %s group: %w", ipc.GroupName, err)
+		}
+	} else if err != nil {
+		return fmt.Errorf("look up %s group: %w", ipc.GroupName, err)
+	}
+
+	if err := os.WriteFile(UnitPath, []byte(unitContent), 0o644); err != nil {
+		return fmt.Errorf("write unit file: %w", err)
+	}
+
+	return runSystemctl("daemon-reload")
+}
+
+func (SystemdManager) Uninstall() error {
+	_ = runSystemctl("stop", ServiceName)
+
+	if err := os.Remove(UnitPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove unit file: %w", err)
+	}
+	return runSystemctl("daemon-reload")
+}
+
+func (SystemdManager) Start() error {
+	return runSystemctl("start", ServiceName)
+}
+
+func (SystemdManager) Stop() error {
+	return runSystemctl("stop", ServiceName)
+}
+
+func runSystemctl(args ...string) error {
+	cmd := exec.Command("systemctl", args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("systemctl %s: %w", strings.Join(args, " "), err)
+	}
+	return nil
+}
