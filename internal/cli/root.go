@@ -9,7 +9,7 @@ func NewRootCmd() *cobra.Command {
 	}
 
 	root.AddCommand(newDaemonCmd())
-	root.AddCommand(newPingCmd())
+	root.AddCommand(newDoctorCmd())
 
 	return root
 }

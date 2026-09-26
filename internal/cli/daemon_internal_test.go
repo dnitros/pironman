@@ -7,8 +7,9 @@ import (
 
 type fakeServiceManager struct {
 	installed bool
+	active    bool
 
-	installErr, uninstallErr, startErr, stopErr, isInstalledErr error
+	installErr, uninstallErr, startErr, stopErr, isInstalledErr, isActiveErr error
 
 	installCalled, uninstallCalled, startCalled, stopCalled bool
 	installContent                                          string
@@ -16,6 +17,10 @@ type fakeServiceManager struct {
 
 func (f *fakeServiceManager) IsInstalled() (bool, error) {
 	return f.installed, f.isInstalledErr
+}
+
+func (f *fakeServiceManager) IsActive() (bool, error) {
+	return f.active, f.isActiveErr
 }
 
 func (f *fakeServiceManager) Install(unitContent string) error {
