@@ -65,7 +65,7 @@ func listenRestricted(path string) (net.Listener, error) {
 }
 
 func restrictSocketAccess(path string) error {
-	grp, err := user.LookupGroup("pironman")
+	grp, err := user.LookupGroup(GroupName)
 	if err != nil {
 		return nil
 	}
