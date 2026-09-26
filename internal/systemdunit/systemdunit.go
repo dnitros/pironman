@@ -38,6 +38,7 @@ type Manager interface {
 	Start() error
 	Stop() error
 	IsInstalled() (bool, error)
+	IsActive() (bool, error)
 }
 
 type SystemdManager struct{}
@@ -81,6 +82,21 @@ func (SystemdManager) Uninstall() error {
 		return fmt.Errorf("remove unit file: %w", err)
 	}
 	return runSystemctl("daemon-reload")
+}
+
+func (SystemdManager) IsActive() (bool, error) {
+	err := exec.Command("systemctl", "is-active", "--quiet", ServiceName).Run()
+	if err == nil {
+		return true, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		// ponytail: any non-zero exit (including a dbus/policy failure, not just a
+		// genuinely stopped unit) is reported as inactive; upgrade to inspecting
+		// systemctl's printed state word if that distinction starts to matter.
+		return false, nil
+	}
+	return false, fmt.Errorf("run systemctl is-active: %w", err)
 }
 
 func (SystemdManager) Start() error {
