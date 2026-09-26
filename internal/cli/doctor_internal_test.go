@@ -54,17 +54,18 @@ func startTestDaemon(t *testing.T, handlers map[string]ipc.Handler) string {
 	return path
 }
 
-func TestGatherStatusReachableInstalledActive(t *testing.T) {
+func TestGatherDoctorReachableInstalledActive(t *testing.T) {
 	path := startTestDaemon(t, map[string]ipc.Handler{
 		"ping": func(args map[string]any) (any, error) {
 			return map[string]string{"message": "pong"}, nil
 		},
 	})
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	mgr := &fakeServiceManager{installed: true, active: true}
 
-	info, err := gatherStatus(path, mgr)
+	info, err := gatherDoctor(path, mgr, cfgPath)
 	if err != nil {
-		t.Fatalf("gatherStatus: %v", err)
+		t.Fatalf("gatherDoctor: %v", err)
 	}
 	if !info.Reachable {
 		t.Fatalf("expected daemon to be reachable, got unreachable reason %q", info.UnreachableReason)
@@ -72,18 +73,16 @@ func TestGatherStatusReachableInstalledActive(t *testing.T) {
 	if !info.Installed || !info.Active {
 		t.Fatalf("expected installed=true active=true, got %+v", info)
 	}
-	if info.Version == "" {
-		t.Fatalf("expected a non-empty version")
-	}
 }
 
-func TestGatherStatusUnreachableSocket(t *testing.T) {
+func TestGatherDoctorUnreachableSocket(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "no-such-daemon.sock")
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	mgr := &fakeServiceManager{installed: false, active: false}
 
-	info, err := gatherStatus(path, mgr)
+	info, err := gatherDoctor(path, mgr, cfgPath)
 	if err != nil {
-		t.Fatalf("expected gatherStatus to degrade gracefully, got error: %v", err)
+		t.Fatalf("expected gatherDoctor to degrade gracefully, got error: %v", err)
 	}
 	if info.Reachable {
 		t.Fatalf("expected daemon to be unreachable")
@@ -93,20 +92,22 @@ func TestGatherStatusUnreachableSocket(t *testing.T) {
 	}
 }
 
-func TestGatherStatusPropagatesIsInstalledError(t *testing.T) {
+func TestGatherDoctorPropagatesIsInstalledError(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "no-such-daemon.sock")
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	mgr := &fakeServiceManager{isInstalledErr: errBoom}
 
-	if _, err := gatherStatus(path, mgr); err == nil {
+	if _, err := gatherDoctor(path, mgr, cfgPath); err == nil {
 		t.Fatalf("expected an error when IsInstalled fails")
 	}
 }
 
-func TestGatherStatusPropagatesIsActiveError(t *testing.T) {
+func TestGatherDoctorPropagatesIsActiveError(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "no-such-daemon.sock")
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	mgr := &fakeServiceManager{installed: true, isActiveErr: errBoom}
 
-	if _, err := gatherStatus(path, mgr); err == nil {
+	if _, err := gatherDoctor(path, mgr, cfgPath); err == nil {
 		t.Fatalf("expected an error when IsActive fails")
 	}
 }

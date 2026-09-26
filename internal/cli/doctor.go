@@ -10,47 +10,26 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dnitros/pironman/internal/buildinfo"
 	"github.com/dnitros/pironman/internal/config"
 	"github.com/dnitros/pironman/internal/ipc"
 	"github.com/dnitros/pironman/internal/systemdunit"
 )
 
-type StatusInfo struct {
-	Version           string
+type DoctorInfo struct {
 	Installed         bool
 	Active            bool
 	Reachable         bool
 	UnreachableReason string
-}
-
-type DoctorInfo struct {
-	StatusInfo
 	SocketPath        string
 	SocketPermissions string
 	ConfigPath        string
 	ConfigStatus      string
 }
 
-func newStatusCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "status",
-		Short: "Show daemon reachability, version, and install/running state",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			info, err := gatherStatus(ipc.SocketPath(), systemdunit.NewManager())
-			if err != nil {
-				return err
-			}
-			printStatus(info)
-			return nil
-		},
-	}
-}
-
 func newDoctorCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "doctor",
-		Short: "Show status plus socket permissions and config readability",
+		Short: "Show daemon reachability, install/running state, socket permissions, and config readability",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			info, err := gatherDoctor(ipc.SocketPath(), systemdunit.NewManager(), config.Path())
 			if err != nil {
@@ -62,43 +41,41 @@ func newDoctorCmd() *cobra.Command {
 	}
 }
 
-func gatherStatus(socketPath string, mgr systemdunit.Manager) (StatusInfo, error) {
+func gatherDoctor(socketPath string, mgr systemdunit.Manager, cfgPath string) (DoctorInfo, error) {
 	installed, err := mgr.IsInstalled()
 	if err != nil {
-		return StatusInfo{}, fmt.Errorf("check install state: %w", err)
+		return DoctorInfo{}, fmt.Errorf("check install state: %w", err)
 	}
 
 	active, err := mgr.IsActive()
 	if err != nil {
-		return StatusInfo{}, fmt.Errorf("check active state: %w", err)
+		return DoctorInfo{}, fmt.Errorf("check active state: %w", err)
 	}
 
-	info := StatusInfo{
-		Version:   buildinfo.Version,
-		Installed: installed,
-		Active:    active,
-	}
-
-	ok, msg := pingDaemon(socketPath)
-	info.Reachable = ok
-	info.UnreachableReason = msg
-
-	return info, nil
-}
-
-func gatherDoctor(socketPath string, mgr systemdunit.Manager, cfgPath string) (DoctorInfo, error) {
-	status, err := gatherStatus(socketPath, mgr)
-	if err != nil {
-		return DoctorInfo{}, err
-	}
+	reachable, unreachableReason := pingDaemon(socketPath)
 
 	return DoctorInfo{
-		StatusInfo:        status,
+		Installed:         installed,
+		Active:            active,
+		Reachable:         reachable,
+		UnreachableReason: unreachableReason,
 		SocketPath:        socketPath,
 		SocketPermissions: describeSocketPermissions(socketPath),
 		ConfigPath:        cfgPath,
 		ConfigStatus:      describeConfigStatus(cfgPath),
 	}, nil
+}
+
+func pingDaemon(socketPath string) (ok bool, message string) {
+	resp, err := ipc.Send(socketPath, "ping", nil)
+	switch {
+	case err != nil:
+		return false, err.Error()
+	case !resp.OK:
+		return false, resp.Error
+	default:
+		return true, ""
+	}
 }
 
 func describeSocketPermissions(path string) string {
@@ -134,8 +111,7 @@ func describeConfigStatus(cfgPath string) string {
 	return "readable"
 }
 
-func printStatus(info StatusInfo) {
-	fmt.Printf("version: %s\n", info.Version)
+func printDoctor(info DoctorInfo) {
 	fmt.Printf("installed: %t\n", info.Installed)
 	fmt.Printf("active: %t\n", info.Active)
 	if info.Reachable {
@@ -143,10 +119,6 @@ func printStatus(info StatusInfo) {
 	} else {
 		fmt.Printf("daemon: unreachable (%s)\n", info.UnreachableReason)
 	}
-}
-
-func printDoctor(info DoctorInfo) {
-	printStatus(info.StatusInfo)
 	fmt.Printf("socket path: %s\n", info.SocketPath)
 	fmt.Printf("socket permissions: %s\n", info.SocketPermissions)
 	fmt.Printf("config path: %s\n", info.ConfigPath)

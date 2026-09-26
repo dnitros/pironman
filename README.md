@@ -14,7 +14,7 @@ The CLI and daemon talk over a Unix domain socket (default `/run/pironman/pironm
 
 ```sh
 PIRONMAN_SOCKET_PATH=/tmp/pironman.sock ./pironman daemon run &
-PIRONMAN_SOCKET_PATH=/tmp/pironman.sock ./pironman ping
+PIRONMAN_SOCKET_PATH=/tmp/pironman.sock ./pironman doctor
 ```
 
 Run tests with:
