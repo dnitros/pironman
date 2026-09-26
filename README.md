@@ -44,13 +44,13 @@ sudo pironman daemon start   # run it now
 
 `daemon install` never implicitly enables or starts the service — `enable` (boot-time autostart) and `start` (run now) are separate, explicit steps.
 
-`daemon install` creates the `pironman` group and adds the invoking user (`$SUDO_USER`) to it automatically (see [ADR-0002](docs/adr/0002-socket-group-permissions.md)) — start a new login session before using the CLI without `sudo`. If `$SUDO_USER` isn't set, or the automatic add fails, it prints the `usermod` command to run manually instead:
+`daemon install` creates the `pironman` group and adds the invoking user (`$SUDO_USER`) to it automatically (see [ADR-0002](docs/adr/0002-socket-group-permissions.md)) — start a new login session before using socket-based commands like `doctor` without `sudo` (this doesn't apply to the `daemon` subcommands below, which always need `sudo` regardless of group membership). If `$SUDO_USER` isn't set, or the automatic add fails, it prints the `usermod` command to run manually instead:
 
 ```sh
 sudo usermod -aG pironman <your-username>
 ```
 
-Manage the service afterward with `daemon stop`, `daemon start`, `daemon enable`, `daemon disable`, or `daemon uninstall`. `install`/`uninstall` always require `sudo`. `start`/`stop`/`enable`/`disable` don't enforce a root check in code, but may still require `sudo` in practice depending on your system's polkit policy for `systemctl`. `daemon uninstall` also disables the service as part of cleanup.
+Manage the service afterward with `daemon stop`, `daemon start`, `daemon enable`, `daemon disable`, or `daemon uninstall` — all six `daemon` subcommands require `sudo`. This isn't optional: `systemctl`'s default polkit policy requires admin authentication to manage a unit regardless of group membership, so the `pironman` group (which only governs the control-socket permissions, see [ADR-0002](docs/adr/0002-socket-group-permissions.md)) can't grant passwordless access to `start`/`stop`/`enable`/`disable`. `daemon uninstall` also disables the service as part of cleanup.
 
 All `daemon` subcommands (and `doctor`) detect whether `systemctl` is on `$PATH` first. On a non-systemd machine (e.g. macOS, or a systemd-less Linux distro), `daemon install`/`uninstall`/`start`/`stop`/`enable`/`disable` fail immediately with a clear "unsupported platform" message instead of a raw exec error, and `doctor` reports `platform: unsupported` instead of hard-erroring.
 

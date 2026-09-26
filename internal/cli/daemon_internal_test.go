@@ -226,7 +226,21 @@ func TestDaemonUninstallCallsManagerWhenRoot(t *testing.T) {
 	}
 }
 
+func TestDaemonStartRequiresRoot(t *testing.T) {
+	asNonRoot(t)
+	mgr := &fakeServiceManager{installed: true}
+
+	err := runDaemonStart(mgr)
+	if err == nil {
+		t.Fatalf("expected an error when not root")
+	}
+	if mgr.startCalled {
+		t.Fatalf("expected Start to not be called without root")
+	}
+}
+
 func TestDaemonStartFailsWhenNotInstalled(t *testing.T) {
+	asRoot(t)
 	mgr := &fakeServiceManager{installed: false}
 
 	err := runDaemonStart(mgr)
@@ -242,6 +256,7 @@ func TestDaemonStartFailsWhenNotInstalled(t *testing.T) {
 }
 
 func TestDaemonStartSucceedsWhenInstalled(t *testing.T) {
+	asRoot(t)
 	mgr := &fakeServiceManager{installed: true}
 
 	if err := runDaemonStart(mgr); err != nil {
@@ -252,7 +267,21 @@ func TestDaemonStartSucceedsWhenInstalled(t *testing.T) {
 	}
 }
 
+func TestDaemonStopRequiresRoot(t *testing.T) {
+	asNonRoot(t)
+	mgr := &fakeServiceManager{installed: true}
+
+	err := runDaemonStop(mgr)
+	if err == nil {
+		t.Fatalf("expected an error when not root")
+	}
+	if mgr.stopCalled {
+		t.Fatalf("expected Stop to not be called without root")
+	}
+}
+
 func TestDaemonStopFailsWhenNotInstalled(t *testing.T) {
+	asRoot(t)
 	mgr := &fakeServiceManager{installed: false}
 
 	err := runDaemonStop(mgr)
@@ -268,6 +297,7 @@ func TestDaemonStopFailsWhenNotInstalled(t *testing.T) {
 }
 
 func TestDaemonStopSucceedsWhenInstalled(t *testing.T) {
+	asRoot(t)
 	mgr := &fakeServiceManager{installed: true}
 
 	if err := runDaemonStop(mgr); err != nil {
@@ -278,7 +308,21 @@ func TestDaemonStopSucceedsWhenInstalled(t *testing.T) {
 	}
 }
 
+func TestDaemonEnableRequiresRoot(t *testing.T) {
+	asNonRoot(t)
+	mgr := &fakeServiceManager{installed: true}
+
+	err := runDaemonEnable(mgr)
+	if err == nil {
+		t.Fatalf("expected an error when not root")
+	}
+	if mgr.enableCalled {
+		t.Fatalf("expected Enable to not be called without root")
+	}
+}
+
 func TestDaemonEnableFailsWhenNotInstalled(t *testing.T) {
+	asRoot(t)
 	mgr := &fakeServiceManager{installed: false}
 
 	err := runDaemonEnable(mgr)
@@ -294,6 +338,7 @@ func TestDaemonEnableFailsWhenNotInstalled(t *testing.T) {
 }
 
 func TestDaemonEnableSucceedsWhenInstalled(t *testing.T) {
+	asRoot(t)
 	mgr := &fakeServiceManager{installed: true}
 
 	if err := runDaemonEnable(mgr); err != nil {
@@ -304,7 +349,21 @@ func TestDaemonEnableSucceedsWhenInstalled(t *testing.T) {
 	}
 }
 
+func TestDaemonDisableRequiresRoot(t *testing.T) {
+	asNonRoot(t)
+	mgr := &fakeServiceManager{installed: true}
+
+	err := runDaemonDisable(mgr)
+	if err == nil {
+		t.Fatalf("expected an error when not root")
+	}
+	if mgr.disableCalled {
+		t.Fatalf("expected Disable to not be called without root")
+	}
+}
+
 func TestDaemonDisableFailsWhenNotInstalled(t *testing.T) {
+	asRoot(t)
 	mgr := &fakeServiceManager{installed: false}
 
 	err := runDaemonDisable(mgr)
@@ -320,6 +379,7 @@ func TestDaemonDisableFailsWhenNotInstalled(t *testing.T) {
 }
 
 func TestDaemonDisableSucceedsWhenInstalled(t *testing.T) {
+	asRoot(t)
 	mgr := &fakeServiceManager{installed: true}
 
 	if err := runDaemonDisable(mgr); err != nil {
