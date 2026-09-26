@@ -1,4 +1,3 @@
-// Package config loads and saves the daemon's YAML configuration.
 package config
 
 import (
@@ -14,7 +13,6 @@ const DefaultPath = "/etc/pironman/config.yaml"
 
 const PathEnvVar = "PIRONMAN_CONFIG_PATH"
 
-// Path resolves the config file location: $PIRONMAN_CONFIG_PATH if set, else DefaultPath.
 func Path() string {
 	if p := os.Getenv(PathEnvVar); p != "" {
 		return p
@@ -45,7 +43,6 @@ type Fan struct {
 	CaseFanState string `yaml:"case_fan_state"`
 }
 
-// Default returns the first-draft schema's default values, per PLAN.md §4.
 func Default() Config {
 	return Config{
 		RGB: RGB{
@@ -65,8 +62,6 @@ func Default() Config {
 	}
 }
 
-// Load reads and parses the config at path. A missing file is not an error:
-// it returns Default() so the daemon can start on a fresh install.
 func Load(path string) (Config, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -83,7 +78,6 @@ func Load(path string) (Config, error) {
 	return cfg, nil
 }
 
-// Save writes c as YAML to path, creating any missing parent directory.
 func (c Config) Save(path string) error {
 	data, err := yaml.Marshal(c)
 	if err != nil {
