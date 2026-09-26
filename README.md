@@ -34,12 +34,15 @@ go build -o pironman ./cmd/pironman
 sudo cp pironman /usr/local/bin/pironman
 ```
 
-Then install and start the service:
+Then install, enable, and start the service:
 
 ```sh
 sudo pironman daemon install
-sudo pironman daemon start
+sudo pironman daemon enable  # survive a reboot
+sudo pironman daemon start   # run it now
 ```
+
+`daemon install` never implicitly enables or starts the service — `enable` (boot-time autostart) and `start` (run now) are separate, explicit steps.
 
 `daemon install` creates the `pironman` group and adds the invoking user (`$SUDO_USER`) to it automatically (see [ADR-0002](docs/adr/0002-socket-group-permissions.md)) — start a new login session before using the CLI without `sudo`. If `$SUDO_USER` isn't set, or the automatic add fails, it prints the `usermod` command to run manually instead:
 
@@ -47,6 +50,6 @@ sudo pironman daemon start
 sudo usermod -aG pironman <your-username>
 ```
 
-Manage the service afterward with `daemon stop`, `daemon start`, or `daemon uninstall` — `install`/`uninstall` require `sudo`, `start`/`stop` only need `pironman` group membership.
+Manage the service afterward with `daemon stop`, `daemon start`, `daemon enable`, `daemon disable`, or `daemon uninstall`. `install`/`uninstall` always require `sudo`. `start`/`stop`/`enable`/`disable` don't enforce a root check in code, but may still require `sudo` in practice depending on your system's polkit policy for `systemctl`. `daemon uninstall` also disables the service as part of cleanup.
 
 Config lives at `/etc/pironman/config.yaml` by default (override with `PIRONMAN_CONFIG_PATH`).
