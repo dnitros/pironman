@@ -217,6 +217,9 @@ func runDaemonStart(mgr systemdunit.Manager) error {
 	if err := requireSupported(mgr, "daemon start"); err != nil {
 		return err
 	}
+	if err := requireRoot("daemon start"); err != nil {
+		return err
+	}
 	if err := requireInstalled(mgr, "daemon start"); err != nil {
 		return err
 	}
@@ -231,6 +234,9 @@ func runDaemonStart(mgr systemdunit.Manager) error {
 
 func runDaemonStop(mgr systemdunit.Manager) error {
 	if err := requireSupported(mgr, "daemon stop"); err != nil {
+		return err
+	}
+	if err := requireRoot("daemon stop"); err != nil {
 		return err
 	}
 	if err := requireInstalled(mgr, "daemon stop"); err != nil {
@@ -249,6 +255,9 @@ func runDaemonEnable(mgr systemdunit.Manager) error {
 	if err := requireSupported(mgr, "daemon enable"); err != nil {
 		return err
 	}
+	if err := requireRoot("daemon enable"); err != nil {
+		return err
+	}
 	if err := requireInstalled(mgr, "daemon enable"); err != nil {
 		return err
 	}
@@ -263,6 +272,9 @@ func runDaemonEnable(mgr systemdunit.Manager) error {
 
 func runDaemonDisable(mgr systemdunit.Manager) error {
 	if err := requireSupported(mgr, "daemon disable"); err != nil {
+		return err
+	}
+	if err := requireRoot("daemon disable"); err != nil {
 		return err
 	}
 	if err := requireInstalled(mgr, "daemon disable"); err != nil {
