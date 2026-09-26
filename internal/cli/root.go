@@ -10,6 +10,7 @@ func NewRootCmd() *cobra.Command {
 
 	root.AddCommand(newDaemonCmd())
 	root.AddCommand(newDoctorCmd())
+	root.AddCommand(newVersionCmd())
 
 	return root
 }
