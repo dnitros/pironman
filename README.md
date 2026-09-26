@@ -23,6 +23,8 @@ Run tests with:
 go test ./...
 ```
 
+`./pironman version` prints the build's git short SHA (with a `+dirty` suffix if the tree had uncommitted changes at build time), embedded automatically by `go build` via `runtime/debug.ReadBuildInfo()`. Prints `unknown` if built without VCS info (e.g. outside a git repo, or with `-buildvcs=false`).
+
 ## Deployment (on a Raspberry Pi)
 
 `daemon install` embeds the currently running binary's own path into the systemd unit's `ExecStart`, so put the binary at its final location before installing:
