@@ -100,14 +100,20 @@ The v1 `auto` threshold (67.5°C, matching the original's "Balanced" curve) is a
 
 ## 6. Delivery phases
 
-**Phase 0 — Scaffolding.** Unchanged from the brief: repo/module layout, socket IPC skeleton (no-op ping/pong), daemon skeleton, `daemon install`/`uninstall` (systemd unit management), `daemon start`/`stop` wired to the installed service with the not-installed error case, `doctor`/`status`, config load/save skeleton.
-*Done when*: `pironman daemon install && pironman daemon start` brings up a running daemon; `pironman status` round-trips a ping over the socket; `pironman daemon stop` on a never-installed system fails with a clear "run `daemon install` first" error.
+**Phase 0 — Scaffolding.** Unchanged from the brief: repo/module layout, socket IPC skeleton (no-op ping/pong), daemon skeleton, `daemon install`/`uninstall` (systemd unit management), `daemon start`/`stop` wired to the installed service with the not-installed error case, `doctor`, config load/save skeleton.
+*Done when*: `pironman daemon install && pironman daemon start` brings up a running daemon; `pironman doctor` round-trips a ping over the socket; `pironman daemon stop` on a never-installed system fails with a clear "run `daemon install` first" error.
+
+*Scope note (decided during PER-5, confirmed during PER-1 close-out): `status` was dropped for this phase — with no hardware yet, it had nothing to report that `doctor` didn't already cover (reachability, installed/active state). `doctor` is Phase 0's single diagnostic command. `status` returns starting Phase 1 (below), once there's real hardware state to show.*
 
 **Phase 1 — RGB base.** On/off, color, brightness (solid only). Unchanged from the brief.
 *Done when*: `pironman rgb on|off|color|brightness` visibly changes the WS2812 strip; state survives a daemon restart via config.
 
+*`status`/`doctor` split, starting this phase*: `status` reintroduces as the hardware-state command — reports current RGB state (on/off, color, brightness) first, growing per phase below. `doctor` stays the environment/setup diagnostic command, and gains its first hardware-prerequisite check here: SPI enabled, via a `/dev/spidev0.0` existence check (`os.Stat`, matching the existing `IsInstalled`/`IsSupported` pattern — no library or `/boot/firmware/config.txt` parsing needed).
+
 **Phase 2 — OLED base.** Renders `mix`/`performance`/`ips`/`disk` pages. Implements the page state machine — advance/previous, sleep-timeout blanking, per-page content scroll (see `CONTEXT.md`) — as an API (`oled.Advance()`, `oled.Previous()`) the daemon can call directly. **Not wired to the physical button yet** — that's Phase 4, which depends on this phase's API. Acceptance testing here uses direct API calls / unit tests against a faked SSD1306, not the physical button.
 *Done when*: all four pages render correct content on-device; `oled.Advance()`/`Previous()` switch pages correctly; the display blanks after the configured sleep timeout with no input; multi-value pages (`ips`, `disk`) scroll their sub-content on the configured interval. SSD1306 RP1 compatibility confirmed on-device (flagged risk, section 8).
+
+`status` gains OLED page/sleep-state fields. `doctor` gains an I2C-enabled check (`/dev/i2c-1` existence), plus a separate convenience check for whether `i2c-tools` (`i2cdetect`) is installed — not something pironman needs at runtime (it talks to the bus directly via `periph.io`), just useful for a human debugging further.
 
 **Phase 3 — Case-fan base.** On/off, plus `auto` at the fixed 67.5°C threshold (section 4). Surfaces the PWM fan's (Pi 5's own cooler) read-only state/speed via `status`.
 *Done when*: `pironman fan on|off` toggles the relay; `pironman fan auto` turns the relay on above 67.5°C and off below a hysteresis band (exact band TBD on-device — flagged risk, section 8); `pironman status` shows both the case fan's state and the PWM fan's read-only speed/state.
@@ -125,7 +131,7 @@ The v1 `auto` threshold (67.5°C, matching the original's "Balanced" curve) is a
 No CI hardware access, so every hardware boundary in `internal/hardware/*` is a small interface (`Relay`, `PWMFanReader`, `WS2812Strip`, `SSD1306Display`, `PowerButtonWatcher`). `rgb`/`oled`/`fan`/`powerbutton` are unit-tested entirely against hand-rolled fakes of these interfaces — no mocking library, since each interface is a handful of methods and hand-writing a fake is less code than adopting and learning a generator. The IPC protocol (`internal/ipc`) is tested with a real Unix socket in a temp directory (or `net.Pipe` for the framing logic alone) — no real daemon process needed.
 
 Manual on-device verification checklist, one per phase, run against the actual Pi 5 + case:
-- **Phase 0**: install/start/stop/uninstall the systemd unit; confirm socket permissions (`root:pironman`, `0660`) and that a non-root user in the `pironman` group can run `status`.
+- **Phase 0**: install/start/stop/uninstall the systemd unit; confirm socket permissions (`root:pironman`, `0660`) and that a non-root user in the `pironman` group can run `doctor`.
 - **Phase 1**: visually confirm RGB color/brightness changes; confirm state survives `systemctl restart pironman`.
 - **Phase 2**: visually confirm all four pages, sleep-timeout blanking, and content scroll; explicitly confirm the SSD1306 driver works over I2C on this specific Pi 5 (RP1 compatibility risk, section 8).
 - **Phase 3**: confirm relay audibly/visibly switches at the expected temperature in `auto` mode; confirm `status` reports both fans correctly.
