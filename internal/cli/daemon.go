@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/dnitros/pironman/internal/config"
 	"github.com/dnitros/pironman/internal/ipc"
 )
 
@@ -32,6 +33,12 @@ func newDaemonRunCmd() *cobra.Command {
 }
 
 func runDaemon(ctx context.Context) error {
+	cfgPath := config.Path()
+	if _, err := config.Load(cfgPath); err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+	fmt.Printf("pironman daemon: loaded config from %s\n", cfgPath)
+
 	path := ipc.SocketPath()
 
 	srv := ipc.NewServer(map[string]ipc.Handler{
