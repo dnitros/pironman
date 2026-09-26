@@ -6,13 +6,18 @@ import (
 )
 
 type fakeServiceManager struct {
-	installed bool
-	active    bool
+	installed   bool
+	active      bool
+	unsupported bool
 
 	installErr, uninstallErr, startErr, stopErr, enableErr, disableErr, isInstalledErr, isActiveErr error
 
 	installCalled, uninstallCalled, startCalled, stopCalled, enableCalled, disableCalled bool
 	installContent                                                                       string
+}
+
+func (f *fakeServiceManager) IsSupported() bool {
+	return !f.unsupported
 }
 
 func (f *fakeServiceManager) IsInstalled() (bool, error) {
@@ -74,6 +79,98 @@ func asNonRoot(t *testing.T) {
 	old := geteuid
 	geteuid = func() int { return 501 }
 	t.Cleanup(func() { geteuid = old })
+}
+
+func TestDaemonInstallFailsWhenUnsupported(t *testing.T) {
+	asRoot(t)
+	mgr := &fakeServiceManager{unsupported: true}
+
+	err := runDaemonInstall(mgr)
+	if err == nil {
+		t.Fatalf("expected an error on an unsupported platform")
+	}
+	if !strings.Contains(err.Error(), "systemd") {
+		t.Fatalf("expected error to mention systemd, got: %v", err)
+	}
+	if mgr.installCalled {
+		t.Fatalf("expected Install to not be called on an unsupported platform")
+	}
+}
+
+func TestDaemonUninstallFailsWhenUnsupported(t *testing.T) {
+	asRoot(t)
+	mgr := &fakeServiceManager{installed: true, unsupported: true}
+
+	err := runDaemonUninstall(mgr)
+	if err == nil {
+		t.Fatalf("expected an error on an unsupported platform")
+	}
+	if !strings.Contains(err.Error(), "systemd") {
+		t.Fatalf("expected error to mention systemd, got: %v", err)
+	}
+	if mgr.uninstallCalled {
+		t.Fatalf("expected Uninstall to not be called on an unsupported platform")
+	}
+}
+
+func TestDaemonStartFailsWhenUnsupported(t *testing.T) {
+	mgr := &fakeServiceManager{installed: true, unsupported: true}
+
+	err := runDaemonStart(mgr)
+	if err == nil {
+		t.Fatalf("expected an error on an unsupported platform")
+	}
+	if !strings.Contains(err.Error(), "systemd") {
+		t.Fatalf("expected error to mention systemd, got: %v", err)
+	}
+	if mgr.startCalled {
+		t.Fatalf("expected Start to not be called on an unsupported platform")
+	}
+}
+
+func TestDaemonStopFailsWhenUnsupported(t *testing.T) {
+	mgr := &fakeServiceManager{installed: true, unsupported: true}
+
+	err := runDaemonStop(mgr)
+	if err == nil {
+		t.Fatalf("expected an error on an unsupported platform")
+	}
+	if !strings.Contains(err.Error(), "systemd") {
+		t.Fatalf("expected error to mention systemd, got: %v", err)
+	}
+	if mgr.stopCalled {
+		t.Fatalf("expected Stop to not be called on an unsupported platform")
+	}
+}
+
+func TestDaemonEnableFailsWhenUnsupported(t *testing.T) {
+	mgr := &fakeServiceManager{installed: true, unsupported: true}
+
+	err := runDaemonEnable(mgr)
+	if err == nil {
+		t.Fatalf("expected an error on an unsupported platform")
+	}
+	if !strings.Contains(err.Error(), "systemd") {
+		t.Fatalf("expected error to mention systemd, got: %v", err)
+	}
+	if mgr.enableCalled {
+		t.Fatalf("expected Enable to not be called on an unsupported platform")
+	}
+}
+
+func TestDaemonDisableFailsWhenUnsupported(t *testing.T) {
+	mgr := &fakeServiceManager{installed: true, unsupported: true}
+
+	err := runDaemonDisable(mgr)
+	if err == nil {
+		t.Fatalf("expected an error on an unsupported platform")
+	}
+	if !strings.Contains(err.Error(), "systemd") {
+		t.Fatalf("expected error to mention systemd, got: %v", err)
+	}
+	if mgr.disableCalled {
+		t.Fatalf("expected Disable to not be called on an unsupported platform")
+	}
 }
 
 func TestDaemonInstallRequiresRoot(t *testing.T) {

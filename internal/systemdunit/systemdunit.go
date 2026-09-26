@@ -41,12 +41,20 @@ type Manager interface {
 	Disable() error
 	IsInstalled() (bool, error)
 	IsActive() (bool, error)
+	IsSupported() bool
 }
 
 type SystemdManager struct{}
 
 func NewManager() Manager {
 	return SystemdManager{}
+}
+
+// IsSupported reports whether systemctl is on $PATH, rather than checking
+// runtime.GOOS, since some Linux distros don't run systemd either.
+func (SystemdManager) IsSupported() bool {
+	_, err := exec.LookPath("systemctl")
+	return err == nil
 }
 
 func (SystemdManager) IsInstalled() (bool, error) {

@@ -92,6 +92,23 @@ func TestGatherDoctorUnreachableSocket(t *testing.T) {
 	}
 }
 
+func TestGatherDoctorReportsUnsupportedPlatformWithoutHardErroring(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "no-such-daemon.sock")
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+	mgr := &fakeServiceManager{unsupported: true, isInstalledErr: errBoom, isActiveErr: errBoom}
+
+	info, err := gatherDoctor(path, mgr, cfgPath)
+	if err != nil {
+		t.Fatalf("expected gatherDoctor to degrade gracefully on an unsupported platform, got: %v", err)
+	}
+	if info.PlatformSupported {
+		t.Fatalf("expected PlatformSupported to be false")
+	}
+	if info.Installed || info.Active {
+		t.Fatalf("expected installed/active to be skipped (not just false) when unsupported, got %+v", info)
+	}
+}
+
 func TestGatherDoctorPropagatesIsInstalledError(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "no-such-daemon.sock")
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
