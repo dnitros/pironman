@@ -52,4 +52,6 @@ sudo usermod -aG pironman <your-username>
 
 Manage the service afterward with `daemon stop`, `daemon start`, `daemon enable`, `daemon disable`, or `daemon uninstall`. `install`/`uninstall` always require `sudo`. `start`/`stop`/`enable`/`disable` don't enforce a root check in code, but may still require `sudo` in practice depending on your system's polkit policy for `systemctl`. `daemon uninstall` also disables the service as part of cleanup.
 
+All `daemon` subcommands (and `doctor`) detect whether `systemctl` is on `$PATH` first. On a non-systemd machine (e.g. macOS, or a systemd-less Linux distro), `daemon install`/`uninstall`/`start`/`stop`/`enable`/`disable` fail immediately with a clear "unsupported platform" message instead of a raw exec error, and `doctor` reports `platform: unsupported` instead of hard-erroring.
+
 Config lives at `/etc/pironman/config.yaml` by default (override with `PIRONMAN_CONFIG_PATH`).

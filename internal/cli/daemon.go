@@ -104,7 +104,17 @@ func errNotInstalled(action string) error {
 	return fmt.Errorf("%s: pironman service is not installed — run `pironman daemon install` first", action)
 }
 
+func requireSupported(mgr systemdunit.Manager, action string) error {
+	if mgr.IsSupported() {
+		return nil
+	}
+	return fmt.Errorf("%s: pironman requires a Linux system with systemd (systemctl not found) — unsupported on this machine", action)
+}
+
 func runDaemonInstall(mgr systemdunit.Manager) error {
+	if err := requireSupported(mgr, "daemon install"); err != nil {
+		return err
+	}
 	if err := requireRoot("daemon install"); err != nil {
 		return err
 	}
@@ -177,6 +187,9 @@ func groupJoinHint() string {
 }
 
 func runDaemonUninstall(mgr systemdunit.Manager) error {
+	if err := requireSupported(mgr, "daemon uninstall"); err != nil {
+		return err
+	}
 	if err := requireRoot("daemon uninstall"); err != nil {
 		return err
 	}
@@ -201,6 +214,9 @@ func requireInstalled(mgr systemdunit.Manager, action string) error {
 }
 
 func runDaemonStart(mgr systemdunit.Manager) error {
+	if err := requireSupported(mgr, "daemon start"); err != nil {
+		return err
+	}
 	if err := requireInstalled(mgr, "daemon start"); err != nil {
 		return err
 	}
@@ -214,6 +230,9 @@ func runDaemonStart(mgr systemdunit.Manager) error {
 }
 
 func runDaemonStop(mgr systemdunit.Manager) error {
+	if err := requireSupported(mgr, "daemon stop"); err != nil {
+		return err
+	}
 	if err := requireInstalled(mgr, "daemon stop"); err != nil {
 		return err
 	}
@@ -227,6 +246,9 @@ func runDaemonStop(mgr systemdunit.Manager) error {
 }
 
 func runDaemonEnable(mgr systemdunit.Manager) error {
+	if err := requireSupported(mgr, "daemon enable"); err != nil {
+		return err
+	}
 	if err := requireInstalled(mgr, "daemon enable"); err != nil {
 		return err
 	}
@@ -240,6 +262,9 @@ func runDaemonEnable(mgr systemdunit.Manager) error {
 }
 
 func runDaemonDisable(mgr systemdunit.Manager) error {
+	if err := requireSupported(mgr, "daemon disable"); err != nil {
+		return err
+	}
 	if err := requireInstalled(mgr, "daemon disable"); err != nil {
 		return err
 	}

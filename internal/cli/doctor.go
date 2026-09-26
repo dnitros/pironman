@@ -16,6 +16,7 @@ import (
 )
 
 type DoctorInfo struct {
+	PlatformSupported bool
 	Installed         bool
 	Active            bool
 	Reachable         bool
@@ -42,19 +43,26 @@ func newDoctorCmd() *cobra.Command {
 }
 
 func gatherDoctor(socketPath string, mgr systemdunit.Manager, cfgPath string) (DoctorInfo, error) {
-	installed, err := mgr.IsInstalled()
-	if err != nil {
-		return DoctorInfo{}, fmt.Errorf("check install state: %w", err)
-	}
+	supported := mgr.IsSupported()
 
-	active, err := mgr.IsActive()
-	if err != nil {
-		return DoctorInfo{}, fmt.Errorf("check active state: %w", err)
+	var installed, active bool
+	if supported {
+		var err error
+		installed, err = mgr.IsInstalled()
+		if err != nil {
+			return DoctorInfo{}, fmt.Errorf("check install state: %w", err)
+		}
+
+		active, err = mgr.IsActive()
+		if err != nil {
+			return DoctorInfo{}, fmt.Errorf("check active state: %w", err)
+		}
 	}
 
 	reachable, unreachableReason := pingDaemon(socketPath)
 
 	return DoctorInfo{
+		PlatformSupported: supported,
 		Installed:         installed,
 		Active:            active,
 		Reachable:         reachable,
@@ -112,8 +120,13 @@ func describeConfigStatus(cfgPath string) string {
 }
 
 func printDoctor(info DoctorInfo) {
-	fmt.Printf("installed: %t\n", info.Installed)
-	fmt.Printf("active: %t\n", info.Active)
+	if !info.PlatformSupported {
+		fmt.Println("platform: unsupported (systemctl not found — pironman requires a Linux system with systemd)")
+	} else {
+		fmt.Println("platform: supported")
+		fmt.Printf("installed: %t\n", info.Installed)
+		fmt.Printf("active: %t\n", info.Active)
+	}
 	if info.Reachable {
 		fmt.Println("daemon: reachable")
 	} else {
