@@ -95,7 +95,16 @@ func runDaemonInstall(mgr systemdunit.Manager) error {
 	}
 
 	fmt.Println("pironman service installed")
+	fmt.Println(groupJoinHint())
 	return nil
+}
+
+func groupJoinHint() string {
+	user := os.Getenv("SUDO_USER")
+	if user == "" {
+		user = "<your-username>"
+	}
+	return fmt.Sprintf("to use the CLI without sudo, run: sudo usermod -aG %s %s (then log out and back in for it to take effect)", ipc.GroupName, user)
 }
 
 func runDaemonUninstall(mgr systemdunit.Manager) error {

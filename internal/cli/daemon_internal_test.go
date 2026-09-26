@@ -165,3 +165,21 @@ func TestDaemonStopSucceedsWhenInstalled(t *testing.T) {
 		t.Fatalf("expected Stop to be called")
 	}
 }
+
+func TestGroupJoinHintUsesSudoUser(t *testing.T) {
+	t.Setenv("SUDO_USER", "pi")
+
+	got := groupJoinHint()
+	if !strings.Contains(got, "usermod -aG pironman pi") {
+		t.Fatalf("expected hint to reference SUDO_USER, got %q", got)
+	}
+}
+
+func TestGroupJoinHintFallsBackWithoutSudoUser(t *testing.T) {
+	t.Setenv("SUDO_USER", "")
+
+	got := groupJoinHint()
+	if !strings.Contains(got, "usermod -aG pironman <your-username>") {
+		t.Fatalf("expected hint to use a placeholder username, got %q", got)
+	}
+}
