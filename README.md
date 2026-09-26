@@ -50,7 +50,7 @@ sudo pironman daemon start   # run it now
 sudo usermod -aG pironman <your-username>
 ```
 
-Manage the service afterward with `daemon stop`, `daemon start`, `daemon enable`, `daemon disable`, or `daemon uninstall` — all six `daemon` subcommands require `sudo`. This isn't optional: `systemctl`'s default polkit policy requires admin authentication to manage a unit regardless of group membership, so the `pironman` group (which only governs the control-socket permissions, see [ADR-0002](docs/adr/0002-socket-group-permissions.md)) can't grant passwordless access to `start`/`stop`/`enable`/`disable`. `daemon uninstall` also disables the service as part of cleanup.
+Manage the service afterward with `daemon stop`, `daemon start`, `daemon enable`, `daemon disable`, or `daemon uninstall` — all six `daemon` subcommands enforce a `sudo` requirement directly in the CLI. This matches `systemctl`'s own default polkit policy, which requires admin authentication to manage a unit regardless of group membership — so the `pironman` group (which only governs the control-socket permissions, see [ADR-0002](docs/adr/0002-socket-group-permissions.md)) was never going to grant passwordless access to `start`/`stop`/`enable`/`disable`, and pironman now requires `sudo` outright rather than relying on that external policy. `daemon uninstall` also disables the service as part of cleanup.
 
 All `daemon` subcommands (and `doctor`) detect whether `systemctl` is on `$PATH` first. On a non-systemd machine (e.g. macOS, or a systemd-less Linux distro), `daemon install`/`uninstall`/`start`/`stop`/`enable`/`disable` fail immediately with a clear "unsupported platform" message instead of a raw exec error, and `doctor` reports `platform: unsupported` instead of hard-erroring.
 
