@@ -1,5 +1,3 @@
-// Package groupaccess manages the OS group ADR-0002 uses to gate access to
-// the daemon's control socket (see docs/adr/0002-socket-group-permissions.md).
 package groupaccess
 
 import (
@@ -12,12 +10,8 @@ import (
 	"github.com/dnitros/pironman/internal/ipc"
 )
 
-// usernamePattern matches the portable POSIX username format (see
-// useradd(8)'s NAME_REGEX), rejecting a leading "-" that usermod would
-// otherwise parse as a flag.
 var usernamePattern = regexp.MustCompile(`^[a-z_][a-z0-9_-]*\$?$`)
 
-// EnsureGroup creates the pironman group if it doesn't already exist.
 var EnsureGroup = func() error {
 	var unknownGroupErr user.UnknownGroupError
 	if _, err := user.LookupGroup(ipc.GroupName); errors.As(err, &unknownGroupErr) {
@@ -30,7 +24,6 @@ var EnsureGroup = func() error {
 	return nil
 }
 
-// IsMember reports whether username belongs to the pironman group.
 var IsMember = func(username string) (bool, error) {
 	u, err := user.Lookup(username)
 	if err != nil {
@@ -52,7 +45,6 @@ var IsMember = func(username string) (bool, error) {
 	return false, nil
 }
 
-// AddMember adds username to the pironman group.
 var AddMember = func(username string) error {
 	if !usernamePattern.MatchString(username) {
 		return fmt.Errorf("invalid username %q", username)

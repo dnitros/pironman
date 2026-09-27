@@ -17,18 +17,14 @@ import (
 
 var geteuid = os.Geteuid
 
-// daemonCommand is a Command-pattern entry (receiver: systemdunit.Manager):
-// it binds a call against the receiver to the guard requirements and
-// success reporting runDaemonCommand applies without knowing which command
-// it's running.
 type daemonCommand struct {
 	use              string
 	short            string
-	name             string // used in guard error messages, e.g. "daemon start"
+	name             string
 	requireInstalled bool
 	execute          func(mgr systemdunit.Manager) error
 	message          string
-	after            func() // optional; runs after message is printed
+	after            func()
 }
 
 var daemonCommands = []daemonCommand{
@@ -162,9 +158,6 @@ func requireInstalled(mgr systemdunit.Manager, action string) error {
 	return nil
 }
 
-// runDaemonCommand is the Command-pattern invoker: it applies the guard
-// sequence every daemon lifecycle command needs, then runs c without
-// knowing which one it is.
 func runDaemonCommand(mgr systemdunit.Manager, c daemonCommand) error {
 	if err := requireSupported(mgr, c.name); err != nil {
 		return err

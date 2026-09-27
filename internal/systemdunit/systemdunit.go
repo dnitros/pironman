@@ -49,8 +49,6 @@ func NewManager() Manager {
 	return SystemdManager{}
 }
 
-// IsSupported reports whether systemctl is on $PATH, rather than checking
-// runtime.GOOS, since some Linux distros don't run systemd either.
 func (SystemdManager) IsSupported() bool {
 	_, err := exec.LookPath("systemctl")
 	return err == nil

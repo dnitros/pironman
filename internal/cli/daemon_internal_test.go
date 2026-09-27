@@ -69,8 +69,6 @@ func (f *fakeServiceManager) Disable() error {
 	return f.disableErr
 }
 
-// called reports whether the Manager method matching a daemonCommand.use
-// was invoked, so guard tests can check "the right method" generically.
 func (f *fakeServiceManager) called(use string) bool {
 	switch use {
 	case "install":
