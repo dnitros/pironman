@@ -7,9 +7,15 @@ import (
 	"fmt"
 	"os/exec"
 	"os/user"
+	"regexp"
 
 	"github.com/dnitros/pironman/internal/ipc"
 )
+
+// usernamePattern matches the portable POSIX username format (see
+// useradd(8)'s NAME_REGEX), rejecting a leading "-" that usermod would
+// otherwise parse as a flag.
+var usernamePattern = regexp.MustCompile(`^[a-z_][a-z0-9_-]*\$?$`)
 
 // EnsureGroup creates the pironman group if it doesn't already exist.
 var EnsureGroup = func() error {
@@ -48,7 +54,10 @@ var IsMember = func(username string) (bool, error) {
 
 // AddMember adds username to the pironman group.
 var AddMember = func(username string) error {
-	if err := exec.Command("usermod", "-aG", ipc.GroupName, username).Run(); err != nil {
+	if !usernamePattern.MatchString(username) {
+		return fmt.Errorf("invalid username %q", username)
+	}
+	if err := exec.Command("usermod", "-aG", ipc.GroupName, "--", username).Run(); err != nil {
 		return fmt.Errorf("usermod -aG %s %s: %w", ipc.GroupName, username, err)
 	}
 	return nil
