@@ -3,15 +3,19 @@ package cli
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"github.com/spf13/cobra"
 
 	"github.com/dnitros/pironman/internal/config"
 	"github.com/dnitros/pironman/internal/groupaccess"
+	"github.com/dnitros/pironman/internal/hardware"
 	"github.com/dnitros/pironman/internal/ipc"
+	"github.com/dnitros/pironman/internal/rgb"
 	"github.com/dnitros/pironman/internal/systemdunit"
 )
 
@@ -224,16 +228,28 @@ func newDaemonRunCmd() *cobra.Command {
 
 func runDaemon(ctx context.Context) error {
 	cfgPath := config.Path()
-	if _, err := config.Load(cfgPath); err != nil {
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
 	fmt.Printf("pironman daemon: loaded config from %s\n", cfgPath)
 
+	// Fixed reference color until a later ticket wires cfg.RGB.Color/Brightness into this pipe.
+	strip, err := hardware.NewSPIWS2812(hardware.SPIPort, hardware.NumLEDs, 0xff, 0xff, 0xff)
+	if err != nil {
+		return fmt.Errorf("open WS2812 strip: %w", err)
+	}
+	rgbStore, err := rgb.NewStore(strip, rgb.State{Enabled: cfg.RGB.Enabled})
+	if err != nil {
+		return fmt.Errorf("apply initial RGB state: %w", err)
+	}
+
 	path := ipc.SocketPath()
 
-	srv := ipc.NewServer(map[string]ipc.Handler{
-		"ping": handlePing,
-	})
+	handlers := map[string]ipc.Handler{"ping": handlePing}
+	maps.Copy(handlers, rgbHandlers(rgbStore, &cfg, cfgPath))
+
+	srv := ipc.NewServer(handlers)
 	if err := srv.Listen(path); err != nil {
 		return fmt.Errorf("start daemon: %w", err)
 	}
@@ -247,4 +263,41 @@ func runDaemon(ctx context.Context) error {
 
 func handlePing(args map[string]any) (any, error) {
 	return map[string]string{"message": "pong"}, nil
+}
+
+// rgbHandlers registers the rgb.on/rgb.off IPC commands against store,
+// persisting the resulting state to cfg/cfgPath on every call. cfg and
+// cfgPath are shared across concurrent IPC connections, so persistence is
+// serialized through persistMu.
+func rgbHandlers(store *rgb.Store, cfg *config.Config, cfgPath string) map[string]ipc.Handler {
+	var persistMu sync.Mutex
+	return map[string]ipc.Handler{
+		"rgb.on":  rgbSetHandler(store, cfg, cfgPath, &persistMu, true),
+		"rgb.off": rgbSetHandler(store, cfg, cfgPath, &persistMu, false),
+	}
+}
+
+func rgbSetHandler(store *rgb.Store, cfg *config.Config, cfgPath string, persistMu *sync.Mutex, enabled bool) ipc.Handler {
+	return func(args map[string]any) (any, error) {
+		var (
+			state rgb.State
+			err   error
+		)
+		if enabled {
+			state, err = store.On()
+		} else {
+			state, err = store.Off()
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		persistMu.Lock()
+		defer persistMu.Unlock()
+		cfg.RGB.Enabled = state.Enabled
+		if err := cfg.Save(cfgPath); err != nil {
+			return nil, fmt.Errorf("persist RGB state: %w", err)
+		}
+		return map[string]bool{"enabled": state.Enabled}, nil
+	}
 }
