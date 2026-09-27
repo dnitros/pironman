@@ -3,6 +3,8 @@ package cli
 import (
 	"strings"
 	"testing"
+
+	"github.com/dnitros/pironman/internal/groupaccess"
 )
 
 type fakeServiceManager struct {
@@ -67,6 +69,25 @@ func (f *fakeServiceManager) Disable() error {
 	return f.disableErr
 }
 
+func (f *fakeServiceManager) called(use string) bool {
+	switch use {
+	case "install":
+		return f.installCalled
+	case "uninstall":
+		return f.uninstallCalled
+	case "start":
+		return f.startCalled
+	case "stop":
+		return f.stopCalled
+	case "enable":
+		return f.enableCalled
+	case "disable":
+		return f.disableCalled
+	default:
+		return false
+	}
+}
+
 func asRoot(t *testing.T) {
 	t.Helper()
 	old := geteuid
@@ -81,332 +102,123 @@ func asNonRoot(t *testing.T) {
 	t.Cleanup(func() { geteuid = old })
 }
 
-func TestDaemonInstallFailsWhenUnsupported(t *testing.T) {
-	asRoot(t)
-	mgr := &fakeServiceManager{unsupported: true}
+func daemonCommandByUse(t *testing.T, use string) daemonCommand {
+	t.Helper()
+	for _, c := range daemonCommands {
+		if c.use == use {
+			return c
+		}
+	}
+	t.Fatalf("no daemon command named %q", use)
+	return daemonCommand{}
+}
 
-	err := runDaemonInstall(mgr)
-	if err == nil {
-		t.Fatalf("expected an error on an unsupported platform")
-	}
-	if !strings.Contains(err.Error(), "systemd") {
-		t.Fatalf("expected error to mention systemd, got: %v", err)
-	}
-	if mgr.installCalled {
-		t.Fatalf("expected Install to not be called on an unsupported platform")
+func TestDaemonCommandsFailWhenUnsupported(t *testing.T) {
+	for _, c := range daemonCommands {
+		t.Run(c.use, func(t *testing.T) {
+			asRoot(t)
+			mgr := &fakeServiceManager{installed: true, unsupported: true}
+
+			err := runDaemonCommand(mgr, c)
+			if err == nil {
+				t.Fatalf("expected an error on an unsupported platform")
+			}
+			if !strings.Contains(err.Error(), "systemd") {
+				t.Fatalf("expected error to mention systemd, got: %v", err)
+			}
+			if mgr.called(c.use) {
+				t.Fatalf("expected %s to not be called on an unsupported platform", c.use)
+			}
+		})
 	}
 }
 
-func TestDaemonUninstallFailsWhenUnsupported(t *testing.T) {
-	asRoot(t)
-	mgr := &fakeServiceManager{installed: true, unsupported: true}
+func TestDaemonCommandsRequireRoot(t *testing.T) {
+	for _, c := range daemonCommands {
+		t.Run(c.use, func(t *testing.T) {
+			asNonRoot(t)
+			mgr := &fakeServiceManager{installed: true}
 
-	err := runDaemonUninstall(mgr)
-	if err == nil {
-		t.Fatalf("expected an error on an unsupported platform")
-	}
-	if !strings.Contains(err.Error(), "systemd") {
-		t.Fatalf("expected error to mention systemd, got: %v", err)
-	}
-	if mgr.uninstallCalled {
-		t.Fatalf("expected Uninstall to not be called on an unsupported platform")
+			err := runDaemonCommand(mgr, c)
+			if err == nil {
+				t.Fatalf("expected an error when not root")
+			}
+			if mgr.called(c.use) {
+				t.Fatalf("expected %s to not be called without root", c.use)
+			}
+		})
 	}
 }
 
-func TestDaemonStartFailsWhenUnsupported(t *testing.T) {
-	mgr := &fakeServiceManager{installed: true, unsupported: true}
+func TestDaemonCommandsRequiringInstallFailWhenNotInstalled(t *testing.T) {
+	for _, c := range daemonCommands {
+		if !c.requireInstalled {
+			continue
+		}
+		t.Run(c.use, func(t *testing.T) {
+			asRoot(t)
+			mgr := &fakeServiceManager{installed: false}
 
-	err := runDaemonStart(mgr)
-	if err == nil {
-		t.Fatalf("expected an error on an unsupported platform")
-	}
-	if !strings.Contains(err.Error(), "systemd") {
-		t.Fatalf("expected error to mention systemd, got: %v", err)
-	}
-	if mgr.startCalled {
-		t.Fatalf("expected Start to not be called on an unsupported platform")
+			err := runDaemonCommand(mgr, c)
+			if err == nil {
+				t.Fatalf("expected an error when the service isn't installed")
+			}
+			if !strings.Contains(err.Error(), "daemon install") {
+				t.Fatalf("expected error to point at `daemon install`, got: %v", err)
+			}
+			if mgr.called(c.use) {
+				t.Fatalf("expected %s to not be called when not installed", c.use)
+			}
+		})
 	}
 }
 
-func TestDaemonStopFailsWhenUnsupported(t *testing.T) {
-	mgr := &fakeServiceManager{installed: true, unsupported: true}
+func TestDaemonCommandsCallTheRightManagerMethod(t *testing.T) {
+	for _, c := range daemonCommands {
+		t.Run(c.use, func(t *testing.T) {
+			asRoot(t)
+			mgr := &fakeServiceManager{installed: true}
 
-	err := runDaemonStop(mgr)
-	if err == nil {
-		t.Fatalf("expected an error on an unsupported platform")
-	}
-	if !strings.Contains(err.Error(), "systemd") {
-		t.Fatalf("expected error to mention systemd, got: %v", err)
-	}
-	if mgr.stopCalled {
-		t.Fatalf("expected Stop to not be called on an unsupported platform")
+			if err := runDaemonCommand(mgr, c); err != nil {
+				t.Fatalf("runDaemonCommand: %v", err)
+			}
+			if !mgr.called(c.use) {
+				t.Fatalf("expected %s to be called", c.use)
+			}
+		})
 	}
 }
 
-func TestDaemonEnableFailsWhenUnsupported(t *testing.T) {
-	mgr := &fakeServiceManager{installed: true, unsupported: true}
-
-	err := runDaemonEnable(mgr)
-	if err == nil {
-		t.Fatalf("expected an error on an unsupported platform")
-	}
-	if !strings.Contains(err.Error(), "systemd") {
-		t.Fatalf("expected error to mention systemd, got: %v", err)
-	}
-	if mgr.enableCalled {
-		t.Fatalf("expected Enable to not be called on an unsupported platform")
-	}
-}
-
-func TestDaemonDisableFailsWhenUnsupported(t *testing.T) {
-	mgr := &fakeServiceManager{installed: true, unsupported: true}
-
-	err := runDaemonDisable(mgr)
-	if err == nil {
-		t.Fatalf("expected an error on an unsupported platform")
-	}
-	if !strings.Contains(err.Error(), "systemd") {
-		t.Fatalf("expected error to mention systemd, got: %v", err)
-	}
-	if mgr.disableCalled {
-		t.Fatalf("expected Disable to not be called on an unsupported platform")
-	}
-}
-
-func TestDaemonInstallRequiresRoot(t *testing.T) {
-	asNonRoot(t)
-	mgr := &fakeServiceManager{}
-
-	err := runDaemonInstall(mgr)
-	if err == nil {
-		t.Fatalf("expected an error when not root")
-	}
-	if mgr.installCalled {
-		t.Fatalf("expected Install to not be called without root")
-	}
-}
-
-func TestDaemonInstallCallsManagerWhenRoot(t *testing.T) {
+func TestDaemonInstallCallsManagerWithUnitContent(t *testing.T) {
 	asRoot(t)
 	mgr := &fakeServiceManager{}
+	install := daemonCommandByUse(t, "install")
 
-	if err := runDaemonInstall(mgr); err != nil {
-		t.Fatalf("runDaemonInstall: %v", err)
-	}
-	if !mgr.installCalled {
-		t.Fatalf("expected Install to be called")
+	if err := runDaemonCommand(mgr, install); err != nil {
+		t.Fatalf("runDaemonCommand: %v", err)
 	}
 	if !strings.Contains(mgr.installContent, "daemon run") {
 		t.Fatalf("expected unit content to reference \"daemon run\", got %q", mgr.installContent)
 	}
 }
 
-func TestDaemonUninstallRequiresRoot(t *testing.T) {
-	asNonRoot(t)
-	mgr := &fakeServiceManager{installed: true}
-
-	err := runDaemonUninstall(mgr)
-	if err == nil {
-		t.Fatalf("expected an error when not root")
-	}
-	if mgr.uninstallCalled {
-		t.Fatalf("expected Uninstall to not be called without root")
-	}
-}
-
-func TestDaemonUninstallCallsManagerWhenRoot(t *testing.T) {
-	asRoot(t)
-	mgr := &fakeServiceManager{installed: true}
-
-	if err := runDaemonUninstall(mgr); err != nil {
-		t.Fatalf("runDaemonUninstall: %v", err)
-	}
-	if !mgr.uninstallCalled {
-		t.Fatalf("expected Uninstall to be called")
-	}
-}
-
-func TestDaemonStartRequiresRoot(t *testing.T) {
-	asNonRoot(t)
-	mgr := &fakeServiceManager{installed: true}
-
-	err := runDaemonStart(mgr)
-	if err == nil {
-		t.Fatalf("expected an error when not root")
-	}
-	if mgr.startCalled {
-		t.Fatalf("expected Start to not be called without root")
-	}
-}
-
-func TestDaemonStartFailsWhenNotInstalled(t *testing.T) {
-	asRoot(t)
-	mgr := &fakeServiceManager{installed: false}
-
-	err := runDaemonStart(mgr)
-	if err == nil {
-		t.Fatalf("expected an error when the service isn't installed")
-	}
-	if !strings.Contains(err.Error(), "daemon install") {
-		t.Fatalf("expected error to point at `daemon install`, got: %v", err)
-	}
-	if mgr.startCalled {
-		t.Fatalf("expected Start to not be called when not installed")
-	}
-}
-
-func TestDaemonStartSucceedsWhenInstalled(t *testing.T) {
-	asRoot(t)
-	mgr := &fakeServiceManager{installed: true}
-
-	if err := runDaemonStart(mgr); err != nil {
-		t.Fatalf("runDaemonStart: %v", err)
-	}
-	if !mgr.startCalled {
-		t.Fatalf("expected Start to be called")
-	}
-}
-
-func TestDaemonStopRequiresRoot(t *testing.T) {
-	asNonRoot(t)
-	mgr := &fakeServiceManager{installed: true}
-
-	err := runDaemonStop(mgr)
-	if err == nil {
-		t.Fatalf("expected an error when not root")
-	}
-	if mgr.stopCalled {
-		t.Fatalf("expected Stop to not be called without root")
-	}
-}
-
-func TestDaemonStopFailsWhenNotInstalled(t *testing.T) {
-	asRoot(t)
-	mgr := &fakeServiceManager{installed: false}
-
-	err := runDaemonStop(mgr)
-	if err == nil {
-		t.Fatalf("expected an error when the service isn't installed")
-	}
-	if !strings.Contains(err.Error(), "daemon install") {
-		t.Fatalf("expected error to point at `daemon install`, got: %v", err)
-	}
-	if mgr.stopCalled {
-		t.Fatalf("expected Stop to not be called when not installed")
-	}
-}
-
-func TestDaemonStopSucceedsWhenInstalled(t *testing.T) {
-	asRoot(t)
-	mgr := &fakeServiceManager{installed: true}
-
-	if err := runDaemonStop(mgr); err != nil {
-		t.Fatalf("runDaemonStop: %v", err)
-	}
-	if !mgr.stopCalled {
-		t.Fatalf("expected Stop to be called")
-	}
-}
-
-func TestDaemonEnableRequiresRoot(t *testing.T) {
-	asNonRoot(t)
-	mgr := &fakeServiceManager{installed: true}
-
-	err := runDaemonEnable(mgr)
-	if err == nil {
-		t.Fatalf("expected an error when not root")
-	}
-	if mgr.enableCalled {
-		t.Fatalf("expected Enable to not be called without root")
-	}
-}
-
-func TestDaemonEnableFailsWhenNotInstalled(t *testing.T) {
-	asRoot(t)
-	mgr := &fakeServiceManager{installed: false}
-
-	err := runDaemonEnable(mgr)
-	if err == nil {
-		t.Fatalf("expected an error when the service isn't installed")
-	}
-	if !strings.Contains(err.Error(), "daemon install") {
-		t.Fatalf("expected error to point at `daemon install`, got: %v", err)
-	}
-	if mgr.enableCalled {
-		t.Fatalf("expected Enable to not be called when not installed")
-	}
-}
-
-func TestDaemonEnableSucceedsWhenInstalled(t *testing.T) {
-	asRoot(t)
-	mgr := &fakeServiceManager{installed: true}
-
-	if err := runDaemonEnable(mgr); err != nil {
-		t.Fatalf("runDaemonEnable: %v", err)
-	}
-	if !mgr.enableCalled {
-		t.Fatalf("expected Enable to be called")
-	}
-}
-
-func TestDaemonDisableRequiresRoot(t *testing.T) {
-	asNonRoot(t)
-	mgr := &fakeServiceManager{installed: true}
-
-	err := runDaemonDisable(mgr)
-	if err == nil {
-		t.Fatalf("expected an error when not root")
-	}
-	if mgr.disableCalled {
-		t.Fatalf("expected Disable to not be called without root")
-	}
-}
-
-func TestDaemonDisableFailsWhenNotInstalled(t *testing.T) {
-	asRoot(t)
-	mgr := &fakeServiceManager{installed: false}
-
-	err := runDaemonDisable(mgr)
-	if err == nil {
-		t.Fatalf("expected an error when the service isn't installed")
-	}
-	if !strings.Contains(err.Error(), "daemon install") {
-		t.Fatalf("expected error to point at `daemon install`, got: %v", err)
-	}
-	if mgr.disableCalled {
-		t.Fatalf("expected Disable to not be called when not installed")
-	}
-}
-
-func TestDaemonDisableSucceedsWhenInstalled(t *testing.T) {
-	asRoot(t)
-	mgr := &fakeServiceManager{installed: true}
-
-	if err := runDaemonDisable(mgr); err != nil {
-		t.Fatalf("runDaemonDisable: %v", err)
-	}
-	if !mgr.disableCalled {
-		t.Fatalf("expected Disable to be called")
-	}
-}
-
 func stubAddUserToGroup(t *testing.T, err error) *string {
 	t.Helper()
 	var got string
-	old := addUserToGroup
-	addUserToGroup = func(user string) error {
+	old := groupaccess.AddMember
+	groupaccess.AddMember = func(user string) error {
 		got = user
 		return err
 	}
-	t.Cleanup(func() { addUserToGroup = old })
+	t.Cleanup(func() { groupaccess.AddMember = old })
 	return &got
 }
 
 func stubIsUserInGroup(t *testing.T, member bool, err error) {
 	t.Helper()
-	old := isUserInGroup
-	isUserInGroup = func(string, string) (bool, error) { return member, err }
-	t.Cleanup(func() { isUserInGroup = old })
+	old := groupaccess.IsMember
+	groupaccess.IsMember = func(string) (bool, error) { return member, err }
+	t.Cleanup(func() { groupaccess.IsMember = old })
 }
 
 func TestDaemonInstallAddsSudoUserToGroup(t *testing.T) {
@@ -415,9 +227,10 @@ func TestDaemonInstallAddsSudoUserToGroup(t *testing.T) {
 	stubIsUserInGroup(t, false, nil)
 	calledWith := stubAddUserToGroup(t, nil)
 	mgr := &fakeServiceManager{}
+	install := daemonCommandByUse(t, "install")
 
-	if err := runDaemonInstall(mgr); err != nil {
-		t.Fatalf("runDaemonInstall: %v", err)
+	if err := runDaemonCommand(mgr, install); err != nil {
+		t.Fatalf("runDaemonCommand: %v", err)
 	}
 	if *calledWith != "pi" {
 		t.Fatalf("expected addUserToGroup to be called with %q, got %q", "pi", *calledWith)
@@ -429,9 +242,10 @@ func TestDaemonInstallSkipsGroupAddWithoutSudoUser(t *testing.T) {
 	t.Setenv("SUDO_USER", "")
 	calledWith := stubAddUserToGroup(t, nil)
 	mgr := &fakeServiceManager{}
+	install := daemonCommandByUse(t, "install")
 
-	if err := runDaemonInstall(mgr); err != nil {
-		t.Fatalf("runDaemonInstall: %v", err)
+	if err := runDaemonCommand(mgr, install); err != nil {
+		t.Fatalf("runDaemonCommand: %v", err)
 	}
 	if *calledWith != "" {
 		t.Fatalf("expected addUserToGroup to not be called, got user %q", *calledWith)
@@ -444,9 +258,10 @@ func TestDaemonInstallSucceedsWhenGroupAddFails(t *testing.T) {
 	stubIsUserInGroup(t, false, nil)
 	stubAddUserToGroup(t, errBoom)
 	mgr := &fakeServiceManager{}
+	install := daemonCommandByUse(t, "install")
 
-	if err := runDaemonInstall(mgr); err != nil {
-		t.Fatalf("expected runDaemonInstall to succeed even when the group-add fails, got: %v", err)
+	if err := runDaemonCommand(mgr, install); err != nil {
+		t.Fatalf("expected runDaemonCommand to succeed even when the group-add fails, got: %v", err)
 	}
 }
 
@@ -456,9 +271,10 @@ func TestDaemonInstallSkipsAddWhenAlreadyMember(t *testing.T) {
 	stubIsUserInGroup(t, true, nil)
 	calledWith := stubAddUserToGroup(t, nil)
 	mgr := &fakeServiceManager{}
+	install := daemonCommandByUse(t, "install")
 
-	if err := runDaemonInstall(mgr); err != nil {
-		t.Fatalf("runDaemonInstall: %v", err)
+	if err := runDaemonCommand(mgr, install); err != nil {
+		t.Fatalf("runDaemonCommand: %v", err)
 	}
 	if *calledWith != "" {
 		t.Fatalf("expected addUserToGroup to not be called when already a member, got user %q", *calledWith)
@@ -471,9 +287,10 @@ func TestDaemonInstallAttemptsAddWhenMembershipCheckFails(t *testing.T) {
 	stubIsUserInGroup(t, false, errBoom)
 	calledWith := stubAddUserToGroup(t, nil)
 	mgr := &fakeServiceManager{}
+	install := daemonCommandByUse(t, "install")
 
-	if err := runDaemonInstall(mgr); err != nil {
-		t.Fatalf("runDaemonInstall: %v", err)
+	if err := runDaemonCommand(mgr, install); err != nil {
+		t.Fatalf("runDaemonCommand: %v", err)
 	}
 	if *calledWith != "pi" {
 		t.Fatalf("expected addUserToGroup to still be attempted when the membership check errors, got %q", *calledWith)

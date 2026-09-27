@@ -4,19 +4,112 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"os/signal"
-	"os/user"
 	"syscall"
 
 	"github.com/spf13/cobra"
 
 	"github.com/dnitros/pironman/internal/config"
+	"github.com/dnitros/pironman/internal/groupaccess"
 	"github.com/dnitros/pironman/internal/ipc"
 	"github.com/dnitros/pironman/internal/systemdunit"
 )
 
 var geteuid = os.Geteuid
+
+type daemonCommand struct {
+	use              string
+	short            string
+	name             string
+	requireInstalled bool
+	execute          func(mgr systemdunit.Manager) error
+	message          string
+	after            func()
+}
+
+var daemonCommands = []daemonCommand{
+	{
+		use:   "install",
+		short: "Install the pironman systemd service",
+		name:  "daemon install",
+		execute: func(mgr systemdunit.Manager) error {
+			execPath, err := os.Executable()
+			if err != nil {
+				return fmt.Errorf("resolve pironman binary path: %w", err)
+			}
+			if err := mgr.Install(systemdunit.UnitContent(execPath)); err != nil {
+				return fmt.Errorf("install service: %w", err)
+			}
+			return nil
+		},
+		message: "pironman service installed",
+		after:   installGroupJoinHook,
+	},
+	{
+		use:   "uninstall",
+		short: "Uninstall the pironman systemd service",
+		name:  "daemon uninstall",
+		execute: func(mgr systemdunit.Manager) error {
+			if err := mgr.Uninstall(); err != nil {
+				return fmt.Errorf("uninstall service: %w", err)
+			}
+			return nil
+		},
+		message: "pironman service uninstalled",
+	},
+	{
+		use:              "start",
+		short:            "Start the installed pironman service",
+		name:             "daemon start",
+		requireInstalled: true,
+		execute: func(mgr systemdunit.Manager) error {
+			if err := mgr.Start(); err != nil {
+				return fmt.Errorf("start service: %w", err)
+			}
+			return nil
+		},
+		message: "pironman service started",
+	},
+	{
+		use:              "stop",
+		short:            "Stop the installed pironman service",
+		name:             "daemon stop",
+		requireInstalled: true,
+		execute: func(mgr systemdunit.Manager) error {
+			if err := mgr.Stop(); err != nil {
+				return fmt.Errorf("stop service: %w", err)
+			}
+			return nil
+		},
+		message: "pironman service stopped",
+	},
+	{
+		use:              "enable",
+		short:            "Enable the pironman service to start automatically on boot",
+		name:             "daemon enable",
+		requireInstalled: true,
+		execute: func(mgr systemdunit.Manager) error {
+			if err := mgr.Enable(); err != nil {
+				return fmt.Errorf("enable service: %w", err)
+			}
+			return nil
+		},
+		message: "pironman service enabled — it will start automatically on boot",
+	},
+	{
+		use:              "disable",
+		short:            "Disable automatic startup of the pironman service on boot",
+		name:             "daemon disable",
+		requireInstalled: true,
+		execute: func(mgr systemdunit.Manager) error {
+			if err := mgr.Disable(); err != nil {
+				return fmt.Errorf("disable service: %w", err)
+			}
+			return nil
+		},
+		message: "pironman service disabled — it will not start automatically on boot",
+	},
+}
 
 func newDaemonCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -24,73 +117,16 @@ func newDaemonCmd() *cobra.Command {
 		Short: "Manage the pironman daemon",
 	}
 	cmd.AddCommand(newDaemonRunCmd())
-	cmd.AddCommand(newDaemonInstallCmd())
-	cmd.AddCommand(newDaemonUninstallCmd())
-	cmd.AddCommand(newDaemonStartCmd())
-	cmd.AddCommand(newDaemonStopCmd())
-	cmd.AddCommand(newDaemonEnableCmd())
-	cmd.AddCommand(newDaemonDisableCmd())
+	for _, c := range daemonCommands {
+		cmd.AddCommand(&cobra.Command{
+			Use:   c.use,
+			Short: c.short,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				return runDaemonCommand(systemdunit.NewManager(), c)
+			},
+		})
+	}
 	return cmd
-}
-
-func newDaemonInstallCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "install",
-		Short: "Install the pironman systemd service",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runDaemonInstall(systemdunit.NewManager())
-		},
-	}
-}
-
-func newDaemonUninstallCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "uninstall",
-		Short: "Uninstall the pironman systemd service",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runDaemonUninstall(systemdunit.NewManager())
-		},
-	}
-}
-
-func newDaemonStartCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "start",
-		Short: "Start the installed pironman service",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runDaemonStart(systemdunit.NewManager())
-		},
-	}
-}
-
-func newDaemonStopCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "stop",
-		Short: "Stop the installed pironman service",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runDaemonStop(systemdunit.NewManager())
-		},
-	}
-}
-
-func newDaemonEnableCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "enable",
-		Short: "Enable the pironman service to start automatically on boot",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runDaemonEnable(systemdunit.NewManager())
-		},
-	}
-}
-
-func newDaemonDisableCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "disable",
-		Short: "Disable automatic startup of the pironman service on boot",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runDaemonDisable(systemdunit.NewManager())
-		},
-	}
 }
 
 func requireRoot(action string) error {
@@ -111,97 +147,6 @@ func requireSupported(mgr systemdunit.Manager, action string) error {
 	return fmt.Errorf("%s: pironman requires a Linux system with systemd (systemctl not found) — unsupported on this machine", action)
 }
 
-func runDaemonInstall(mgr systemdunit.Manager) error {
-	if err := requireSupported(mgr, "daemon install"); err != nil {
-		return err
-	}
-	if err := requireRoot("daemon install"); err != nil {
-		return err
-	}
-
-	execPath, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("resolve pironman binary path: %w", err)
-	}
-
-	if err := mgr.Install(systemdunit.UnitContent(execPath)); err != nil {
-		return fmt.Errorf("install service: %w", err)
-	}
-
-	fmt.Println("pironman service installed")
-
-	sudoUser := os.Getenv("SUDO_USER")
-	if sudoUser == "" {
-		fmt.Println(groupJoinHint())
-		return nil
-	}
-
-	if alreadyMember, _ := isUserInGroup(sudoUser, ipc.GroupName); alreadyMember {
-		return nil
-	}
-
-	if err := addUserToGroup(sudoUser); err != nil {
-		fmt.Printf("could not add %s to the %s group automatically: %v\n", sudoUser, ipc.GroupName, err)
-		fmt.Println(groupJoinHint())
-		return nil
-	}
-
-	fmt.Printf("added %s to the %s group — log out and back in for it to take effect\n", sudoUser, ipc.GroupName)
-	return nil
-}
-
-var addUserToGroup = func(username string) error {
-	if err := exec.Command("usermod", "-aG", ipc.GroupName, username).Run(); err != nil {
-		return fmt.Errorf("usermod -aG %s %s: %w", ipc.GroupName, username, err)
-	}
-	return nil
-}
-
-var isUserInGroup = func(username, groupName string) (bool, error) {
-	u, err := user.Lookup(username)
-	if err != nil {
-		return false, fmt.Errorf("look up user %s: %w", username, err)
-	}
-	g, err := user.LookupGroup(groupName)
-	if err != nil {
-		return false, fmt.Errorf("look up group %s: %w", groupName, err)
-	}
-	gids, err := u.GroupIds()
-	if err != nil {
-		return false, fmt.Errorf("look up groups for %s: %w", username, err)
-	}
-	for _, gid := range gids {
-		if gid == g.Gid {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-func groupJoinHint() string {
-	user := os.Getenv("SUDO_USER")
-	if user == "" {
-		user = "<your-username>"
-	}
-	return fmt.Sprintf("to use the CLI without sudo, run: sudo usermod -aG %s %s (then log out and back in for it to take effect)", ipc.GroupName, user)
-}
-
-func runDaemonUninstall(mgr systemdunit.Manager) error {
-	if err := requireSupported(mgr, "daemon uninstall"); err != nil {
-		return err
-	}
-	if err := requireRoot("daemon uninstall"); err != nil {
-		return err
-	}
-
-	if err := mgr.Uninstall(); err != nil {
-		return fmt.Errorf("uninstall service: %w", err)
-	}
-
-	fmt.Println("pironman service uninstalled")
-	return nil
-}
-
 func requireInstalled(mgr systemdunit.Manager, action string) error {
 	installed, err := mgr.IsInstalled()
 	if err != nil {
@@ -213,80 +158,57 @@ func requireInstalled(mgr systemdunit.Manager, action string) error {
 	return nil
 }
 
-func runDaemonStart(mgr systemdunit.Manager) error {
-	if err := requireSupported(mgr, "daemon start"); err != nil {
+func runDaemonCommand(mgr systemdunit.Manager, c daemonCommand) error {
+	if err := requireSupported(mgr, c.name); err != nil {
 		return err
 	}
-	if err := requireRoot("daemon start"); err != nil {
+	if err := requireRoot(c.name); err != nil {
 		return err
 	}
-	if err := requireInstalled(mgr, "daemon start"); err != nil {
+	if c.requireInstalled {
+		if err := requireInstalled(mgr, c.name); err != nil {
+			return err
+		}
+	}
+
+	if err := c.execute(mgr); err != nil {
 		return err
 	}
 
-	if err := mgr.Start(); err != nil {
-		return fmt.Errorf("start service: %w", err)
-	}
+	fmt.Println(c.message)
 
-	fmt.Println("pironman service started")
+	if c.after != nil {
+		c.after()
+	}
 	return nil
 }
 
-func runDaemonStop(mgr systemdunit.Manager) error {
-	if err := requireSupported(mgr, "daemon stop"); err != nil {
-		return err
-	}
-	if err := requireRoot("daemon stop"); err != nil {
-		return err
-	}
-	if err := requireInstalled(mgr, "daemon stop"); err != nil {
-		return err
+func installGroupJoinHook() {
+	sudoUser := os.Getenv("SUDO_USER")
+	if sudoUser == "" {
+		fmt.Println(groupJoinHint())
+		return
 	}
 
-	if err := mgr.Stop(); err != nil {
-		return fmt.Errorf("stop service: %w", err)
+	if alreadyMember, _ := groupaccess.IsMember(sudoUser); alreadyMember {
+		return
 	}
 
-	fmt.Println("pironman service stopped")
-	return nil
+	if err := groupaccess.AddMember(sudoUser); err != nil {
+		fmt.Printf("could not add %s to the %s group automatically: %v\n", sudoUser, ipc.GroupName, err)
+		fmt.Println(groupJoinHint())
+		return
+	}
+
+	fmt.Printf("added %s to the %s group — log out and back in for it to take effect\n", sudoUser, ipc.GroupName)
 }
 
-func runDaemonEnable(mgr systemdunit.Manager) error {
-	if err := requireSupported(mgr, "daemon enable"); err != nil {
-		return err
+func groupJoinHint() string {
+	user := os.Getenv("SUDO_USER")
+	if user == "" {
+		user = "<your-username>"
 	}
-	if err := requireRoot("daemon enable"); err != nil {
-		return err
-	}
-	if err := requireInstalled(mgr, "daemon enable"); err != nil {
-		return err
-	}
-
-	if err := mgr.Enable(); err != nil {
-		return fmt.Errorf("enable service: %w", err)
-	}
-
-	fmt.Println("pironman service enabled — it will start automatically on boot")
-	return nil
-}
-
-func runDaemonDisable(mgr systemdunit.Manager) error {
-	if err := requireSupported(mgr, "daemon disable"); err != nil {
-		return err
-	}
-	if err := requireRoot("daemon disable"); err != nil {
-		return err
-	}
-	if err := requireInstalled(mgr, "daemon disable"); err != nil {
-		return err
-	}
-
-	if err := mgr.Disable(); err != nil {
-		return fmt.Errorf("disable service: %w", err)
-	}
-
-	fmt.Println("pironman service disabled — it will not start automatically on boot")
-	return nil
+	return fmt.Sprintf("to use the CLI without sudo, run: sudo usermod -aG %s %s (then log out and back in for it to take effect)", ipc.GroupName, user)
 }
 
 func newDaemonRunCmd() *cobra.Command {
