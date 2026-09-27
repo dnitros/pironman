@@ -3,6 +3,8 @@ package cli
 import (
 	"strings"
 	"testing"
+
+	"github.com/dnitros/pironman/internal/groupaccess"
 )
 
 type fakeServiceManager struct {
@@ -205,20 +207,20 @@ func TestDaemonInstallCallsManagerWithUnitContent(t *testing.T) {
 func stubAddUserToGroup(t *testing.T, err error) *string {
 	t.Helper()
 	var got string
-	old := addUserToGroup
-	addUserToGroup = func(user string) error {
+	old := groupaccess.AddMember
+	groupaccess.AddMember = func(user string) error {
 		got = user
 		return err
 	}
-	t.Cleanup(func() { addUserToGroup = old })
+	t.Cleanup(func() { groupaccess.AddMember = old })
 	return &got
 }
 
 func stubIsUserInGroup(t *testing.T, member bool, err error) {
 	t.Helper()
-	old := isUserInGroup
-	isUserInGroup = func(string, string) (bool, error) { return member, err }
-	t.Cleanup(func() { isUserInGroup = old })
+	old := groupaccess.IsMember
+	groupaccess.IsMember = func(string) (bool, error) { return member, err }
+	t.Cleanup(func() { groupaccess.IsMember = old })
 }
 
 func TestDaemonInstallAddsSudoUserToGroup(t *testing.T) {

@@ -5,10 +5,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"os/user"
 	"strings"
 
-	"github.com/dnitros/pironman/internal/ipc"
+	"github.com/dnitros/pironman/internal/groupaccess"
 )
 
 const (
@@ -69,13 +68,8 @@ func (SystemdManager) IsInstalled() (bool, error) {
 }
 
 func (SystemdManager) Install(unitContent string) error {
-	var unknownGroupErr user.UnknownGroupError
-	if _, err := user.LookupGroup(ipc.GroupName); errors.As(err, &unknownGroupErr) {
-		if err := exec.Command("groupadd", ipc.GroupName).Run(); err != nil {
-			return fmt.Errorf("create %s group: %w", ipc.GroupName, err)
-		}
-	} else if err != nil {
-		return fmt.Errorf("look up %s group: %w", ipc.GroupName, err)
+	if err := groupaccess.EnsureGroup(); err != nil {
+		return err
 	}
 
 	if err := os.WriteFile(UnitPath, []byte(unitContent), 0o644); err != nil {
