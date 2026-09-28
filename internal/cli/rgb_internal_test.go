@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/dnitros/pironman/internal/config"
@@ -13,10 +15,11 @@ import (
 
 type fakeStrip struct {
 	onCalls, offCalls int
+	onErr, offErr     error
 }
 
-func (f *fakeStrip) On() error  { f.onCalls++; return nil }
-func (f *fakeStrip) Off() error { f.offCalls++; return nil }
+func (f *fakeStrip) On() error  { f.onCalls++; return f.onErr }
+func (f *fakeStrip) Off() error { f.offCalls++; return f.offErr }
 
 func TestRGBHandlersOnPersistsStateAndCallsStrip(t *testing.T) {
 	strip := &fakeStrip{}
@@ -110,6 +113,79 @@ func TestRGBHandlersPropagatesPersistErrorWithoutMutatingCfg(t *testing.T) {
 	}
 	if cfg.RGB.Enabled {
 		t.Fatalf("expected cfg to remain unchanged when persist fails, got enabled=true")
+	}
+	if strip.onCalls != 0 {
+		t.Fatalf("expected the strip to never be touched when persisting fails, got %d On() calls", strip.onCalls)
+	}
+}
+
+func TestRGBHandlersCommitsPersistedStateEvenWhenStripFails(t *testing.T) {
+	strip := &fakeStrip{onErr: errors.New("spi write failed")}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: false})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	cfg := config.Default()
+	cfg.RGB.Enabled = false
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+
+	path := startTestDaemon(t, rgbHandlers(store, &cfg, cfgPath))
+
+	resp, err := ipc.Send(path, "rgb.on", nil)
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if resp.OK {
+		t.Fatalf("expected ok=false when the strip write fails")
+	}
+
+	// A restart's rgb.NewStore reapplies whatever is on disk, so the intended
+	// state must be persisted even though the strip write itself failed.
+	saved, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	if !saved.RGB.Enabled {
+		t.Fatalf("expected the intended state to be persisted despite the strip failure")
+	}
+	if !cfg.RGB.Enabled {
+		t.Fatalf("expected cfg to reflect the persisted state despite the strip failure")
+	}
+}
+
+func TestRGBHandlersConcurrentCallsKeepConfigInSyncWithStore(t *testing.T) {
+	strip := &fakeStrip{}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: false})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	cfg := config.Default()
+	cfg.RGB.Enabled = false
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+
+	path := startTestDaemon(t, rgbHandlers(store, &cfg, cfgPath))
+
+	const n = 50
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		cmd := "rgb.on"
+		if i%2 == 0 {
+			cmd = "rgb.off"
+		}
+		go func(cmd string) {
+			defer wg.Done()
+			ipc.Send(path, cmd, nil)
+		}(cmd)
+	}
+	wg.Wait()
+
+	saved, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	if saved.RGB.Enabled != store.Enabled() {
+		t.Fatalf("persisted config (enabled=%v) disagrees with the store's final state (enabled=%v) after concurrent calls", saved.RGB.Enabled, store.Enabled())
 	}
 }
 

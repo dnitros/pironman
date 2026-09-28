@@ -268,8 +268,12 @@ func handlePing(args map[string]any) (any, error) {
 // rgbHandlers registers the rgb.on/rgb.off IPC commands against store,
 // persisting the resulting state to cfg/cfgPath on every call. cfg and
 // cfgPath are shared across concurrent IPC connections; opMu serializes each
-// call's store mutation together with its persist so the two can't reorder
-// relative to a competing call.
+// call's persist together with its store mutation so the two can't reorder
+// relative to a competing call. Persisting before applying to the strip
+// means a failed strip write still leaves cfg/disk holding the intended
+// state, which a daemon restart's rgb.NewStore reapplies — a failed disk
+// write, in contrast, must not leave the strip already changed with nothing
+// on disk to reapply it after a restart.
 func rgbHandlers(store *rgb.Store, cfg *config.Config, cfgPath string) map[string]ipc.Handler {
 	var opMu sync.Mutex
 	return map[string]ipc.Handler{
@@ -283,6 +287,13 @@ func rgbSetHandler(store *rgb.Store, cfg *config.Config, cfgPath string, opMu *s
 		opMu.Lock()
 		defer opMu.Unlock()
 
+		updated := *cfg
+		updated.RGB.Enabled = enabled
+		if err := updated.Save(cfgPath); err != nil {
+			return nil, fmt.Errorf("persist RGB state: %w", err)
+		}
+		*cfg = updated
+
 		var (
 			state rgb.State
 			err   error
@@ -293,15 +304,8 @@ func rgbSetHandler(store *rgb.Store, cfg *config.Config, cfgPath string, opMu *s
 			state, err = store.Off()
 		}
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("apply RGB state: %w", err)
 		}
-
-		updated := *cfg
-		updated.RGB.Enabled = state.Enabled
-		if err := updated.Save(cfgPath); err != nil {
-			return nil, fmt.Errorf("persist RGB state: %w", err)
-		}
-		*cfg = updated
 
 		return map[string]bool{"enabled": state.Enabled}, nil
 	}
