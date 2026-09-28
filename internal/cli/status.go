@@ -2,6 +2,8 @@ package cli
 
 import (
 	"fmt"
+	"os"
+	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
@@ -49,7 +51,10 @@ func gatherStatus(socketPath string) (StatusInfo, error) {
 }
 
 func printStatus(info StatusInfo) {
-	fmt.Printf("RGB enabled: %t\n", info.Enabled)
-	fmt.Printf("RGB color: %s\n", info.Color)
-	fmt.Printf("RGB brightness: %d\n", info.Brightness)
+	fmt.Println("RGB")
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', 0)
+	fmt.Fprintf(w, "  enabled:\t%t\n", info.Enabled)
+	fmt.Fprintf(w, "  color:\t%s\n", info.Color)
+	fmt.Fprintf(w, "  brightness:\t%d%%\n", info.Brightness)
+	w.Flush()
 }
