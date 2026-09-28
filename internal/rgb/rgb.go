@@ -104,6 +104,9 @@ func (s *Store) Off() (State, error) {
 	return s.state, nil
 }
 
+// State returns a consistent snapshot of the current enabled/color/brightness
+// state, unlike reading Enabled/Color/Brightness separately which could
+// observe a mutation landing between the calls.
 func (s *Store) State() State {
 	s.mu.Lock()
 	defer s.mu.Unlock()

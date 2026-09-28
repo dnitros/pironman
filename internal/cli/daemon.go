@@ -269,6 +269,9 @@ func handlePing(args map[string]any) (any, error) {
 	return map[string]string{"message": "pong"}, nil
 }
 
+// statusHandler reports the daemon's current RGB state for the "status" IPC
+// command, reading a single snapshot from store so the reported fields never
+// straddle a concurrent mutation.
 func statusHandler(store *rgb.Store) ipc.Handler {
 	return func(args map[string]any) (any, error) {
 		state := store.State()
