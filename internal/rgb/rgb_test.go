@@ -10,8 +10,9 @@ import (
 var errBoom = errors.New("boom")
 
 type fakeStrip struct {
-	onCalls, offCalls int
-	onErr, offErr     error
+	onCalls, offCalls, setColorCalls int
+	onErr, offErr                    error
+	lastR, lastG, lastB              byte
 }
 
 func (f *fakeStrip) On() error {
@@ -22,6 +23,11 @@ func (f *fakeStrip) On() error {
 func (f *fakeStrip) Off() error {
 	f.offCalls++
 	return f.offErr
+}
+
+func (f *fakeStrip) SetColor(r, g, b byte) {
+	f.setColorCalls++
+	f.lastR, f.lastG, f.lastB = r, g, b
 }
 
 func TestNewStoreAppliesEnabledInitialStateOnce(t *testing.T) {
@@ -104,6 +110,134 @@ func TestStoreOnPropagatesHardwareErrorWithoutChangingState(t *testing.T) {
 	}
 	if store.Enabled() {
 		t.Fatalf("expected state to remain disabled after a failed On()")
+	}
+}
+
+func TestStoreSetColorAppliesImmediatelyWhenEnabled(t *testing.T) {
+	strip := &fakeStrip{}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: true})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+
+	state, err := store.SetColor("#ff00ff")
+	if err != nil {
+		t.Fatalf("SetColor: %v", err)
+	}
+	if state.Color != "#ff00ff" || store.Color() != "#ff00ff" {
+		t.Fatalf("expected color #ff00ff, got state=%q store=%q", state.Color, store.Color())
+	}
+	if strip.setColorCalls != 1 {
+		t.Fatalf("expected strip.SetColor() to be called once, got %d", strip.setColorCalls)
+	}
+	if strip.lastR != 0xff || strip.lastG != 0x00 || strip.lastB != 0xff {
+		t.Fatalf("expected strip color bytes (0xff, 0x00, 0xff), got (%#x, %#x, %#x)", strip.lastR, strip.lastG, strip.lastB)
+	}
+	if strip.onCalls != 2 {
+		t.Fatalf("expected strip.On() to be called twice (initial apply + reapply after color change), got %d", strip.onCalls)
+	}
+}
+
+func TestStoreSetColorStoresWithoutReapplyingWhenDisabled(t *testing.T) {
+	strip := &fakeStrip{}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: false})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+
+	state, err := store.SetColor("#00ff00")
+	if err != nil {
+		t.Fatalf("SetColor: %v", err)
+	}
+	if state.Color != "#00ff00" {
+		t.Fatalf("expected state.Color to be #00ff00, got %q", state.Color)
+	}
+	if strip.setColorCalls != 1 {
+		t.Fatalf("expected strip.SetColor() to be called once, got %d", strip.setColorCalls)
+	}
+	if strip.onCalls != 0 {
+		t.Fatalf("expected strip.On() to never be called while disabled, got %d", strip.onCalls)
+	}
+}
+
+func TestStoreSetColorRejectsInvalidHex(t *testing.T) {
+	tests := []string{
+		"",
+		"ff00ff",    // missing '#'
+		"#ff00f",    // too short
+		"#ff00ff00", // too long
+		"#gg00ff",   // non-hex digit
+	}
+	for _, hex := range tests {
+		strip := &fakeStrip{}
+		store, err := rgb.NewStore(strip, rgb.State{Enabled: false})
+		if err != nil {
+			t.Fatalf("NewStore: %v", err)
+		}
+
+		if _, err := store.SetColor(hex); err == nil {
+			t.Fatalf("SetColor(%q): expected an error", hex)
+		}
+		if strip.setColorCalls != 0 {
+			t.Fatalf("SetColor(%q): expected the strip to never be touched for invalid input, got %d calls", hex, strip.setColorCalls)
+		}
+	}
+}
+
+func TestStoreSetColorPropagatesHardwareErrorWithoutChangingState(t *testing.T) {
+	strip := &fakeStrip{}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: true, Color: "#000000"})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	strip.onErr = errBoom
+
+	if _, err := store.SetColor("#ff00ff"); err == nil {
+		t.Fatalf("expected SetColor to propagate the hardware error")
+	}
+	if store.Color() != "#000000" {
+		t.Fatalf("expected color to remain unchanged after a failed reapply, got %q", store.Color())
+	}
+}
+
+func TestStoreSetColorRevertsHardwareColorOnFailedReapply(t *testing.T) {
+	strip := &fakeStrip{}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: true, Color: "#000000"})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	strip.onErr = errBoom
+
+	if _, err := store.SetColor("#ff00ff"); err == nil {
+		t.Fatalf("expected SetColor to propagate the hardware error")
+	}
+
+	if strip.lastR != 0x00 || strip.lastG != 0x00 || strip.lastB != 0x00 {
+		t.Fatalf("expected the strip's buffered color to be reverted to #000000 after a failed reapply, got (%#x, %#x, %#x)", strip.lastR, strip.lastG, strip.lastB)
+	}
+	if strip.setColorCalls != 2 {
+		t.Fatalf("expected strip.SetColor() to be called twice (the failed attempt, then the revert), got %d", strip.setColorCalls)
+	}
+}
+
+func TestStoreColorPersistsAcrossSimulatedRestart(t *testing.T) {
+	strip := &fakeStrip{}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: true, Color: "#000000"})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	if _, err := store.SetColor("#123456"); err != nil {
+		t.Fatalf("SetColor: %v", err)
+	}
+
+	restartedStrip := &fakeStrip{}
+	restarted, err := rgb.NewStore(restartedStrip, rgb.State{Enabled: true, Color: store.Color()})
+	if err != nil {
+		t.Fatalf("NewStore (restart): %v", err)
+	}
+
+	if restarted.Color() != "#123456" {
+		t.Fatalf("expected the color to survive the simulated restart, got %q", restarted.Color())
 	}
 }
 

@@ -15,6 +15,7 @@ func newRGBCmd() *cobra.Command {
 	}
 	cmd.AddCommand(newRGBSetCmd("on", "Turn the RGB strip on"))
 	cmd.AddCommand(newRGBSetCmd("off", "Turn the RGB strip off"))
+	cmd.AddCommand(newRGBColorCmd())
 	return cmd
 }
 
@@ -38,5 +39,29 @@ func runRGBSet(socketPath, use string) error {
 	}
 
 	fmt.Printf("RGB strip turned %s\n", use)
+	return nil
+}
+
+func newRGBColorCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "color <#hex>",
+		Short: "Set the RGB strip to a solid color",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runRGBColor(ipc.SocketPath(), args[0])
+		},
+	}
+}
+
+func runRGBColor(socketPath, hex string) error {
+	resp, err := ipc.Send(socketPath, "rgb.color", map[string]any{"hex": hex})
+	if err != nil {
+		return fmt.Errorf("rgb color: daemon unreachable: %w", err)
+	}
+	if !resp.OK {
+		return fmt.Errorf("rgb color: %s", resp.Error)
+	}
+
+	fmt.Printf("RGB strip color set to %s\n", hex)
 	return nil
 }
