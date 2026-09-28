@@ -226,6 +226,18 @@ func newDaemonRunCmd() *cobra.Command {
 	}
 }
 
+func newRGBStore(cfg config.Config) (*rgb.Store, error) {
+	r, g, b, err := rgb.ScaledColor(cfg.RGB.Color, cfg.RGB.Brightness)
+	if err != nil {
+		return nil, fmt.Errorf("parse configured RGB color/brightness: %w", err)
+	}
+	strip, err := hardware.NewSPIWS2812(hardware.SPIPort, hardware.NumLEDs, r, g, b)
+	if err != nil {
+		return nil, fmt.Errorf("open WS2812 strip: %w", err)
+	}
+	return rgb.NewStore(strip, rgb.State{Enabled: cfg.RGB.Enabled, Color: cfg.RGB.Color, Brightness: cfg.RGB.Brightness})
+}
+
 func runDaemon(ctx context.Context) error {
 	cfgPath := config.Path()
 	cfg, err := config.Load(cfgPath)
@@ -234,15 +246,7 @@ func runDaemon(ctx context.Context) error {
 	}
 	fmt.Printf("pironman daemon: loaded config from %s\n", cfgPath)
 
-	r, g, b, err := rgb.ScaledColor(cfg.RGB.Color, cfg.RGB.Brightness)
-	if err != nil {
-		return fmt.Errorf("parse configured RGB color/brightness: %w", err)
-	}
-	strip, err := hardware.NewSPIWS2812(hardware.SPIPort, hardware.NumLEDs, r, g, b)
-	if err != nil {
-		return fmt.Errorf("open WS2812 strip: %w", err)
-	}
-	rgbStore, err := rgb.NewStore(strip, rgb.State{Enabled: cfg.RGB.Enabled, Color: cfg.RGB.Color, Brightness: cfg.RGB.Brightness})
+	rgbStore, err := newRGBStore(cfg)
 	if err != nil {
 		return fmt.Errorf("apply initial RGB state: %w", err)
 	}
