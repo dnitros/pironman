@@ -200,6 +200,26 @@ func TestStoreSetColorPropagatesHardwareErrorWithoutChangingState(t *testing.T) 
 	}
 }
 
+func TestStoreSetColorRevertsHardwareColorOnFailedReapply(t *testing.T) {
+	strip := &fakeStrip{}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: true, Color: "#000000"})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	strip.onErr = errBoom
+
+	if _, err := store.SetColor("#ff00ff"); err == nil {
+		t.Fatalf("expected SetColor to propagate the hardware error")
+	}
+
+	if strip.lastR != 0x00 || strip.lastG != 0x00 || strip.lastB != 0x00 {
+		t.Fatalf("expected the strip's buffered color to be reverted to #000000 after a failed reapply, got (%#x, %#x, %#x)", strip.lastR, strip.lastG, strip.lastB)
+	}
+	if strip.setColorCalls != 2 {
+		t.Fatalf("expected strip.SetColor() to be called twice (the failed attempt, then the revert), got %d", strip.setColorCalls)
+	}
+}
+
 func TestStoreColorPersistsAcrossSimulatedRestart(t *testing.T) {
 	strip := &fakeStrip{}
 	store, err := rgb.NewStore(strip, rgb.State{Enabled: true, Color: "#000000"})

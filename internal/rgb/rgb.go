@@ -99,6 +99,11 @@ func (s *Store) SetColor(hex string) (State, error) {
 	s.strip.SetColor(r, g, b)
 	if s.state.Enabled {
 		if err := s.strip.On(); err != nil {
+			// Revert the strip's buffered color so an unrelated, later On()
+			// doesn't show a color that was never confirmed.
+			if prevR, prevG, prevB, perr := ParseColor(s.state.Color); perr == nil {
+				s.strip.SetColor(prevR, prevG, prevB)
+			}
 			return s.state, fmt.Errorf("apply RGB strip color: %w", err)
 		}
 	}
