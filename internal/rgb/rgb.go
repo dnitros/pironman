@@ -10,10 +10,11 @@ import (
 	"github.com/dnitros/pironman/internal/hardware"
 )
 
-// State is the RGB strip's persisted on/off and color state.
+// State is the RGB strip's persisted on/off, color, and brightness state.
 type State struct {
-	Enabled bool
-	Color   string
+	Enabled    bool
+	Color      string
+	Brightness int
 }
 
 // ParseColor validates hexColor as a "#RRGGBB" string and decodes its RGB
@@ -27,6 +28,31 @@ func ParseColor(hexColor string) (r, g, b byte, err error) {
 		return 0, 0, 0, fmt.Errorf("invalid color %q: want a 6-digit hex color like #ff00ff", hexColor)
 	}
 	return raw[0], raw[1], raw[2], nil
+}
+
+// ValidateBrightness rejects any percent outside 0-100.
+func ValidateBrightness(percent int) error {
+	if percent < 0 || percent > 100 {
+		return fmt.Errorf("invalid brightness %d: want 0-100", percent)
+	}
+	return nil
+}
+
+// ScaledColor validates hexColor and percent, then returns hexColor's RGB
+// bytes scaled by percent.
+func ScaledColor(hexColor string, percent int) (r, g, b byte, err error) {
+	r, g, b, err = ParseColor(hexColor)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	if err := ValidateBrightness(percent); err != nil {
+		return 0, 0, 0, err
+	}
+	return scale(r, percent), scale(g, percent), scale(b, percent), nil
+}
+
+func scale(c byte, percent int) byte {
+	return byte(int(c) * percent / 100)
 }
 
 // Store is the daemon's mutex-guarded in-process RGB state. It applies the
@@ -91,7 +117,7 @@ func (s *Store) SetColor(hex string) (State, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	r, g, b, err := ParseColor(hex)
+	r, g, b, err := ScaledColor(hex, s.state.Brightness)
 	if err != nil {
 		return s.state, err
 	}
@@ -101,7 +127,7 @@ func (s *Store) SetColor(hex string) (State, error) {
 		if err := s.strip.On(); err != nil {
 			// Revert the strip's buffered color so an unrelated, later On()
 			// doesn't show a color that was never confirmed.
-			if prevR, prevG, prevB, perr := ParseColor(s.state.Color); perr == nil {
+			if prevR, prevG, prevB, perr := ScaledColor(s.state.Color, s.state.Brightness); perr == nil {
 				s.strip.SetColor(prevR, prevG, prevB)
 			}
 			return s.state, fmt.Errorf("apply RGB strip color: %w", err)
@@ -116,4 +142,38 @@ func (s *Store) Color() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.state.Color
+}
+
+// SetBrightness validates percent, sets the strip's brightness, and — if the
+// strip is currently enabled — reapplies it immediately so the change is
+// visible.
+func (s *Store) SetBrightness(percent int) (State, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	r, g, b, err := ScaledColor(s.state.Color, percent)
+	if err != nil {
+		return s.state, err
+	}
+
+	s.strip.SetColor(r, g, b)
+	if s.state.Enabled {
+		if err := s.strip.On(); err != nil {
+			// Revert the strip's buffered color so an unrelated, later On()
+			// doesn't show a color that was never confirmed.
+			if prevR, prevG, prevB, perr := ScaledColor(s.state.Color, s.state.Brightness); perr == nil {
+				s.strip.SetColor(prevR, prevG, prevB)
+			}
+			return s.state, fmt.Errorf("apply RGB strip brightness: %w", err)
+		}
+	}
+	s.state.Brightness = percent
+	return s.state, nil
+}
+
+// Brightness reports the current brightness percentage.
+func (s *Store) Brightness() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.state.Brightness
 }

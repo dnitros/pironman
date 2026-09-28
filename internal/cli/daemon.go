@@ -234,16 +234,15 @@ func runDaemon(ctx context.Context) error {
 	}
 	fmt.Printf("pironman daemon: loaded config from %s\n", cfgPath)
 
-	// Fixed reference brightness until a later ticket wires cfg.RGB.Brightness into this pipe.
-	r, g, b, err := rgb.ParseColor(cfg.RGB.Color)
+	r, g, b, err := rgb.ScaledColor(cfg.RGB.Color, cfg.RGB.Brightness)
 	if err != nil {
-		return fmt.Errorf("parse configured RGB color: %w", err)
+		return fmt.Errorf("parse configured RGB color/brightness: %w", err)
 	}
 	strip, err := hardware.NewSPIWS2812(hardware.SPIPort, hardware.NumLEDs, r, g, b)
 	if err != nil {
 		return fmt.Errorf("open WS2812 strip: %w", err)
 	}
-	rgbStore, err := rgb.NewStore(strip, rgb.State{Enabled: cfg.RGB.Enabled, Color: cfg.RGB.Color})
+	rgbStore, err := rgb.NewStore(strip, rgb.State{Enabled: cfg.RGB.Enabled, Color: cfg.RGB.Color, Brightness: cfg.RGB.Brightness})
 	if err != nil {
 		return fmt.Errorf("apply initial RGB state: %w", err)
 	}
@@ -279,9 +278,10 @@ func handlePing(args map[string]any) (any, error) {
 func rgbHandlers(store *rgb.Store, cfg *config.Config, cfgPath string) map[string]ipc.Handler {
 	var opMu sync.Mutex
 	return map[string]ipc.Handler{
-		"rgb.on":    rgbSetHandler(store, cfg, cfgPath, &opMu, true),
-		"rgb.off":   rgbSetHandler(store, cfg, cfgPath, &opMu, false),
-		"rgb.color": rgbColorHandler(store, cfg, cfgPath, &opMu),
+		"rgb.on":         rgbSetHandler(store, cfg, cfgPath, &opMu, true),
+		"rgb.off":        rgbSetHandler(store, cfg, cfgPath, &opMu, false),
+		"rgb.color":      rgbColorHandler(store, cfg, cfgPath, &opMu),
+		"rgb.brightness": rgbBrightnessHandler(store, cfg, cfgPath, &opMu),
 	}
 }
 
@@ -342,5 +342,39 @@ func rgbColorHandler(store *rgb.Store, cfg *config.Config, cfgPath string, opMu 
 		}
 
 		return map[string]string{"color": state.Color}, nil
+	}
+}
+
+// rgbBrightnessHandler validates the "percent" arg, persists it, then
+// applies it to store, following rgbSetHandler's persist-before-hardware-write
+// ordering. JSON numbers decode to float64, so percent arrives as a float64
+// even though the CLI sends an int.
+func rgbBrightnessHandler(store *rgb.Store, cfg *config.Config, cfgPath string, opMu *sync.Mutex) ipc.Handler {
+	return func(args map[string]any) (any, error) {
+		raw, ok := args["percent"].(float64)
+		if !ok {
+			return nil, fmt.Errorf("rgb.brightness: missing \"percent\" argument")
+		}
+		percent := int(raw)
+		if err := rgb.ValidateBrightness(percent); err != nil {
+			return nil, err
+		}
+
+		opMu.Lock()
+		defer opMu.Unlock()
+
+		updated := *cfg
+		updated.RGB.Brightness = percent
+		if err := updated.Save(cfgPath); err != nil {
+			return nil, fmt.Errorf("persist RGB brightness: %w", err)
+		}
+		*cfg = updated
+
+		state, err := store.SetBrightness(percent)
+		if err != nil {
+			return nil, fmt.Errorf("apply RGB brightness: %w", err)
+		}
+
+		return map[string]int{"brightness": state.Brightness}, nil
 	}
 }
