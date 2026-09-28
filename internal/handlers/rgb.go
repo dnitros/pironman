@@ -10,17 +10,6 @@ import (
 	"github.com/dnitros/pironman/internal/rgb"
 )
 
-func StatusHandler(store *rgb.Store) ipc.Handler {
-	return func(args map[string]any) (any, error) {
-		state := store.State()
-		return map[string]any{
-			"enabled":    state.Enabled,
-			"color":      state.Color,
-			"brightness": state.Brightness,
-		}, nil
-	}
-}
-
 func RGBHandlers(store *rgb.Store, cfg *config.Config, cfgPath string) map[string]ipc.Handler {
 	var opMu sync.Mutex
 	return map[string]ipc.Handler{
