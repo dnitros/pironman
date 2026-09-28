@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"log"
 	"maps"
 	"os"
 	"os/signal"
@@ -265,7 +266,19 @@ func runDaemon(ctx context.Context) error {
 	defer stop()
 
 	fmt.Printf("pironman daemon listening on %s\n", path)
-	return srv.Serve(ctx)
+	return serveDaemon(ctx, srv, rgbStore)
+}
+
+// serveDaemon turns the RGB strip off once the server stops serving,
+// since a WS2812 strip holds its last color until it loses power.
+func serveDaemon(ctx context.Context, srv *ipc.Server, rgbStore *rgb.Store) error {
+	serveErr := srv.Serve(ctx)
+
+	if _, err := rgbStore.Off(); err != nil {
+		log.Printf("daemon: turn off RGB strip on shutdown: %v", err)
+	}
+
+	return serveErr
 }
 
 func handlePing(args map[string]any) (any, error) {

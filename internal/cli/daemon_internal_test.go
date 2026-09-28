@@ -1,10 +1,15 @@
 package cli
 
 import (
+	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/dnitros/pironman/internal/groupaccess"
+	"github.com/dnitros/pironman/internal/ipc"
+	"github.com/dnitros/pironman/internal/rgb"
 )
 
 type fakeServiceManager struct {
@@ -312,5 +317,46 @@ func TestGroupJoinHintFallsBackWithoutSudoUser(t *testing.T) {
 	got := groupJoinHint()
 	if !strings.Contains(got, "usermod -aG pironman <your-username>") {
 		t.Fatalf("expected hint to use a placeholder username, got %q", got)
+	}
+}
+
+type fakeStrip struct {
+	onCalls, offCalls int
+}
+
+func (f *fakeStrip) On() error             { f.onCalls++; return nil }
+func (f *fakeStrip) Off() error            { f.offCalls++; return nil }
+func (f *fakeStrip) SetColor(r, g, b byte) {}
+
+func TestServeDaemonOffOnShutdown(t *testing.T) {
+	strip := &fakeStrip{}
+	rgbStore, err := rgb.NewStore(strip, rgb.State{Enabled: true})
+	if err != nil {
+		t.Fatalf("rgb.NewStore: %v", err)
+	}
+	strip.onCalls, strip.offCalls = 0, 0
+
+	sockDir, err := os.MkdirTemp("", "pironman-test")
+	if err != nil {
+		t.Fatalf("MkdirTemp: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(sockDir) })
+
+	srv := ipc.NewServer(nil)
+	if err := srv.Listen(filepath.Join(sockDir, "s.sock")); err != nil {
+		t.Fatalf("srv.Listen: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := serveDaemon(ctx, srv, rgbStore); err != nil {
+		t.Fatalf("serveDaemon: %v", err)
+	}
+	if strip.offCalls != 1 {
+		t.Fatalf("expected Serve to be followed by exactly one Off() call, got %d", strip.offCalls)
+	}
+	if rgbStore.Enabled() {
+		t.Fatalf("expected RGB store to report disabled after shutdown")
 	}
 }
