@@ -29,5 +29,5 @@ The Pironman case's own fan, wired to a GPIO relay. This tool actively controls 
 _Avoid_: GPIO fan, the fan
 
 **RGB strip**:
-The 4 addressable WS2812 LEDs on the main board (SPI0/GPIO10), driven by `pironman rgb on|off` (color/brightness in a later phase). The case fans also have their own built-in RGB, but it draws power from the same connector as the fan motor and has no separate data/control line — the case fan feature controls it only as a side effect of turning the fan on/off, never through this command.
+The 4 addressable WS2812 LEDs on the main board (SPI0/GPIO10), driven by `pironman rgb on|off|color` (brightness in a later phase). The case fans also have their own built-in RGB, but it draws power from the same connector as the fan motor and has no separate data/control line — the case fan feature controls it only as a side effect of turning the fan on/off, never through this command.
 _Avoid_: fan lights, RGB fan (that names the fan product itself, not a control line)
