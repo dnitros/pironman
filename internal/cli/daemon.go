@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"log"
 	"maps"
 	"os"
 	"os/signal"
@@ -265,7 +266,22 @@ func runDaemon(ctx context.Context) error {
 	defer stop()
 
 	fmt.Printf("pironman daemon listening on %s\n", path)
-	return srv.Serve(ctx)
+	return serveDaemon(ctx, srv, func() error {
+		_, err := rgbStore.Off()
+		return err
+	})
+}
+
+func serveDaemon(ctx context.Context, srv *ipc.Server, shutdownHooks ...func() error) error {
+	serveErr := srv.Serve(ctx)
+
+	for _, hook := range shutdownHooks {
+		if err := hook(); err != nil {
+			log.Printf("daemon: shutdown hook failed: %v", err)
+		}
+	}
+
+	return serveErr
 }
 
 func handlePing(args map[string]any) (any, error) {

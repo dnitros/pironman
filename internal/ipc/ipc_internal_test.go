@@ -54,6 +54,7 @@ func TestHandleConnSetsWriteDeadline(t *testing.T) {
 	})
 
 	conn := newFakeConn(`{"cmd":"ping"}` + "\n")
+	srv.wg.Add(1)
 	srv.handleConn(conn)
 
 	if !conn.writeDeadlineSet {

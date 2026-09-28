@@ -12,6 +12,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -19,6 +20,7 @@ import (
 type Server struct {
 	ln       net.Listener
 	handlers map[string]Handler
+	wg       sync.WaitGroup
 }
 
 func NewServer(handlers map[string]Handler) *Server {
@@ -80,6 +82,8 @@ func restrictSocketAccess(path string) error {
 }
 
 func (s *Server) Serve(ctx context.Context) error {
+	defer s.wg.Wait()
+
 	go func() {
 		<-ctx.Done()
 		s.ln.Close()
@@ -95,6 +99,7 @@ func (s *Server) Serve(ctx context.Context) error {
 				return err
 			}
 		}
+		s.wg.Add(1)
 		go s.handleConn(conn)
 	}
 }
@@ -104,6 +109,7 @@ func (s *Server) Close() error {
 }
 
 func (s *Server) handleConn(conn net.Conn) {
+	defer s.wg.Done()
 	defer conn.Close()
 
 	if err := conn.SetDeadline(time.Now().Add(ioTimeout)); err != nil {

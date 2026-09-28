@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/dnitros/pironman/internal/ipc"
 )
@@ -126,6 +127,48 @@ func TestUnknownCommand(t *testing.T) {
 	}
 	if resp.Error == "" {
 		t.Fatalf("expected a non-empty error message")
+	}
+}
+
+func TestServeWaitsForInFlightHandlerBeforeReturning(t *testing.T) {
+	path := filepath.Join(shortSocketDir(t), "pironman.sock")
+	started := make(chan struct{})
+	release := make(chan struct{})
+	srv := ipc.NewServer(map[string]ipc.Handler{
+		"slow": func(args map[string]any) (any, error) {
+			close(started)
+			<-release
+			return nil, nil
+		},
+	})
+	if err := srv.Listen(path); err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		srv.Serve(ctx)
+		close(done)
+	}()
+
+	go ipc.Send(path, "slow", nil)
+	<-started
+
+	cancel()
+
+	select {
+	case <-done:
+		t.Fatalf("expected Serve to wait for the in-flight handler before returning")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(release)
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("expected Serve to return once the in-flight handler finished")
 	}
 }
 
