@@ -266,16 +266,22 @@ func runDaemon(ctx context.Context) error {
 	defer stop()
 
 	fmt.Printf("pironman daemon listening on %s\n", path)
-	return serveDaemon(ctx, srv, rgbStore)
+	return serveDaemon(ctx, srv, func() error {
+		_, err := rgbStore.Off()
+		return err
+	})
 }
 
-// serveDaemon turns the RGB strip off once the server stops serving,
-// since a WS2812 strip holds its last color until it loses power.
-func serveDaemon(ctx context.Context, srv *ipc.Server, rgbStore *rgb.Store) error {
+// serveDaemon runs shutdownHooks once the server stops serving, since hardware
+// (e.g. the WS2812 strip) can stay powered and hold its last state after the
+// daemon exits. A hook's failure is logged, not fatal, and doesn't block the rest.
+func serveDaemon(ctx context.Context, srv *ipc.Server, shutdownHooks ...func() error) error {
 	serveErr := srv.Serve(ctx)
 
-	if _, err := rgbStore.Off(); err != nil {
-		log.Printf("daemon: turn off RGB strip on shutdown: %v", err)
+	for _, hook := range shutdownHooks {
+		if err := hook(); err != nil {
+			log.Printf("daemon: shutdown hook failed: %v", err)
+		}
 	}
 
 	return serveErr
