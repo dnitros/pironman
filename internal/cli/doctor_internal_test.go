@@ -63,7 +63,7 @@ func TestGatherDoctorReachableInstalledActive(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	mgr := &fakeServiceManager{installed: true, active: true}
 
-	info, err := gatherDoctor(path, mgr, cfgPath)
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"))
 	if err != nil {
 		t.Fatalf("gatherDoctor: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestGatherDoctorUnreachableSocket(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	mgr := &fakeServiceManager{installed: false, active: false}
 
-	info, err := gatherDoctor(path, mgr, cfgPath)
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"))
 	if err != nil {
 		t.Fatalf("expected gatherDoctor to degrade gracefully, got error: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestGatherDoctorReportsUnsupportedPlatformWithoutHardErroring(t *testing.T)
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	mgr := &fakeServiceManager{unsupported: true, isInstalledErr: errBoom, isActiveErr: errBoom}
 
-	info, err := gatherDoctor(path, mgr, cfgPath)
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"))
 	if err != nil {
 		t.Fatalf("expected gatherDoctor to degrade gracefully on an unsupported platform, got: %v", err)
 	}
@@ -114,7 +114,7 @@ func TestGatherDoctorPropagatesIsInstalledError(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	mgr := &fakeServiceManager{isInstalledErr: errBoom}
 
-	if _, err := gatherDoctor(path, mgr, cfgPath); err == nil {
+	if _, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0")); err == nil {
 		t.Fatalf("expected an error when IsInstalled fails")
 	}
 }
@@ -124,7 +124,7 @@ func TestGatherDoctorPropagatesIsActiveError(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	mgr := &fakeServiceManager{installed: true, isActiveErr: errBoom}
 
-	if _, err := gatherDoctor(path, mgr, cfgPath); err == nil {
+	if _, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0")); err == nil {
 		t.Fatalf("expected an error when IsActive fails")
 	}
 }
@@ -136,7 +136,7 @@ func TestGatherDoctorReportsMissingConfigAsDefaulted(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	mgr := &fakeServiceManager{installed: true, active: true}
 
-	info, err := gatherDoctor(path, mgr, cfgPath)
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"))
 	if err != nil {
 		t.Fatalf("gatherDoctor: %v", err)
 	}
@@ -153,7 +153,7 @@ func TestGatherDoctorReportsReadableConfig(t *testing.T) {
 	writeFile(t, cfgPath, "rgb:\n  enabled: true\n")
 	mgr := &fakeServiceManager{installed: true, active: true}
 
-	info, err := gatherDoctor(path, mgr, cfgPath)
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"))
 	if err != nil {
 		t.Fatalf("gatherDoctor: %v", err)
 	}
@@ -170,7 +170,7 @@ func TestGatherDoctorReportsMalformedConfig(t *testing.T) {
 	writeFile(t, cfgPath, "not: [valid: yaml")
 	mgr := &fakeServiceManager{installed: true, active: true}
 
-	info, err := gatherDoctor(path, mgr, cfgPath)
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"))
 	if err != nil {
 		t.Fatalf("gatherDoctor: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestGatherDoctorReportsSocketPermissions(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	mgr := &fakeServiceManager{installed: true, active: true}
 
-	info, err := gatherDoctor(path, mgr, cfgPath)
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"))
 	if err != nil {
 		t.Fatalf("gatherDoctor: %v", err)
 	}
@@ -200,11 +200,42 @@ func TestGatherDoctorReportsMissingSocketGracefully(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	mgr := &fakeServiceManager{}
 
-	info, err := gatherDoctor(path, mgr, cfgPath)
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"))
 	if err != nil {
 		t.Fatalf("expected gatherDoctor to degrade gracefully, got error: %v", err)
 	}
 	if info.SocketPermissions == "" {
 		t.Fatalf("expected a non-empty (error-describing) socket permissions string")
+	}
+}
+
+func TestGatherDoctorReportsSPIEnabled(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "no-such-daemon.sock")
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+	mgr := &fakeServiceManager{}
+	spiPath := filepath.Join(t.TempDir(), "spidev0.0")
+	writeFile(t, spiPath, "")
+
+	info, err := gatherDoctor(path, mgr, cfgPath, spiPath)
+	if err != nil {
+		t.Fatalf("gatherDoctor: %v", err)
+	}
+	if !info.SPIEnabled {
+		t.Fatalf("expected SPIEnabled to be true when %q exists", spiPath)
+	}
+}
+
+func TestGatherDoctorReportsSPIDisabled(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "no-such-daemon.sock")
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+	mgr := &fakeServiceManager{}
+	spiPath := filepath.Join(t.TempDir(), "spidev0.0")
+
+	info, err := gatherDoctor(path, mgr, cfgPath, spiPath)
+	if err != nil {
+		t.Fatalf("gatherDoctor: %v", err)
+	}
+	if info.SPIEnabled {
+		t.Fatalf("expected SPIEnabled to be false when %q is absent", spiPath)
 	}
 }

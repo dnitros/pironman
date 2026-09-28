@@ -15,6 +15,10 @@ import (
 	"github.com/dnitros/pironman/internal/systemdunit"
 )
 
+// spiDevPath is the SPI device node checked to determine whether SPI is
+// enabled on the host.
+const spiDevPath = "/dev/spidev0.0"
+
 type DoctorInfo struct {
 	PlatformSupported bool
 	Installed         bool
@@ -25,6 +29,7 @@ type DoctorInfo struct {
 	SocketPermissions string
 	ConfigPath        string
 	ConfigStatus      string
+	SPIEnabled        bool
 }
 
 func newDoctorCmd() *cobra.Command {
@@ -32,7 +37,7 @@ func newDoctorCmd() *cobra.Command {
 		Use:   "doctor",
 		Short: "Show daemon reachability, install/running state, socket permissions, and config readability",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			info, err := gatherDoctor(ipc.SocketPath(), systemdunit.NewManager(), config.Path())
+			info, err := gatherDoctor(ipc.SocketPath(), systemdunit.NewManager(), config.Path(), spiDevPath)
 			if err != nil {
 				return err
 			}
@@ -42,7 +47,7 @@ func newDoctorCmd() *cobra.Command {
 	}
 }
 
-func gatherDoctor(socketPath string, mgr systemdunit.Manager, cfgPath string) (DoctorInfo, error) {
+func gatherDoctor(socketPath string, mgr systemdunit.Manager, cfgPath string, spiPath string) (DoctorInfo, error) {
 	supported := mgr.IsSupported()
 
 	var installed, active bool
@@ -71,7 +76,13 @@ func gatherDoctor(socketPath string, mgr systemdunit.Manager, cfgPath string) (D
 		SocketPermissions: describeSocketPermissions(socketPath),
 		ConfigPath:        cfgPath,
 		ConfigStatus:      describeConfigStatus(cfgPath),
+		SPIEnabled:        spiEnabled(spiPath),
 	}, nil
+}
+
+func spiEnabled(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 func pingDaemon(socketPath string) (ok bool, message string) {
@@ -136,4 +147,5 @@ func printDoctor(info DoctorInfo) {
 	fmt.Printf("socket permissions: %s\n", info.SocketPermissions)
 	fmt.Printf("config path: %s\n", info.ConfigPath)
 	fmt.Printf("config: %s\n", info.ConfigStatus)
+	fmt.Printf("SPI enabled: %t\n", info.SPIEnabled)
 }
