@@ -272,9 +272,6 @@ func runDaemon(ctx context.Context) error {
 	})
 }
 
-// serveDaemon runs shutdownHooks once the server stops serving, since hardware
-// (e.g. the WS2812 strip) can stay powered and hold its last state after the
-// daemon exits. A hook's failure is logged, not fatal, and doesn't block the rest.
 func serveDaemon(ctx context.Context, srv *ipc.Server, shutdownHooks ...func() error) error {
 	serveErr := srv.Serve(ctx)
 
