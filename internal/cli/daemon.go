@@ -269,11 +269,9 @@ func handlePing(args map[string]any) (any, error) {
 // persisting the resulting state to cfg/cfgPath on every call. cfg and
 // cfgPath are shared across concurrent IPC connections; opMu serializes each
 // call's persist together with its store mutation so the two can't reorder
-// relative to a competing call. Persisting before applying to the strip
-// means a failed strip write still leaves cfg/disk holding the intended
-// state, which a daemon restart's rgb.NewStore reapplies — a failed disk
-// write, in contrast, must not leave the strip already changed with nothing
-// on disk to reapply it after a restart.
+// relative to a competing call. Persist always happens before the strip is
+// touched, so cfg/disk (and a subsequent restart's rgb.NewStore) reflect the
+// intended state regardless of whether the strip write itself succeeds.
 func rgbHandlers(store *rgb.Store, cfg *config.Config, cfgPath string) map[string]ipc.Handler {
 	var opMu sync.Mutex
 	return map[string]ipc.Handler{
