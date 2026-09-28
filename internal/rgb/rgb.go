@@ -117,21 +117,8 @@ func (s *Store) SetColor(hex string) (State, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	r, g, b, err := ScaledColor(hex, s.state.Brightness)
-	if err != nil {
+	if err := s.applyScaled(hex, s.state.Brightness); err != nil {
 		return s.state, err
-	}
-
-	s.strip.SetColor(r, g, b)
-	if s.state.Enabled {
-		if err := s.strip.On(); err != nil {
-			// Revert the strip's buffered color so an unrelated, later On()
-			// doesn't show a color that was never confirmed.
-			if prevR, prevG, prevB, perr := ScaledColor(s.state.Color, s.state.Brightness); perr == nil {
-				s.strip.SetColor(prevR, prevG, prevB)
-			}
-			return s.state, fmt.Errorf("apply RGB strip color: %w", err)
-		}
 	}
 	s.state.Color = hex
 	return s.state, nil
@@ -151,21 +138,8 @@ func (s *Store) SetBrightness(percent int) (State, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	r, g, b, err := ScaledColor(s.state.Color, percent)
-	if err != nil {
+	if err := s.applyScaled(s.state.Color, percent); err != nil {
 		return s.state, err
-	}
-
-	s.strip.SetColor(r, g, b)
-	if s.state.Enabled {
-		if err := s.strip.On(); err != nil {
-			// Revert the strip's buffered color so an unrelated, later On()
-			// doesn't show a color that was never confirmed.
-			if prevR, prevG, prevB, perr := ScaledColor(s.state.Color, s.state.Brightness); perr == nil {
-				s.strip.SetColor(prevR, prevG, prevB)
-			}
-			return s.state, fmt.Errorf("apply RGB strip brightness: %w", err)
-		}
 	}
 	s.state.Brightness = percent
 	return s.state, nil
@@ -176,4 +150,28 @@ func (s *Store) Brightness() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.state.Brightness
+}
+
+// applyScaled validates hex/percent, buffers the scaled color on the strip,
+// and — if enabled — reapplies it immediately, reverting the strip's
+// buffered color if that reapply fails so an unrelated, later On() doesn't
+// show a color that was never confirmed. Caller holds s.mu.
+func (s *Store) applyScaled(hex string, percent int) error {
+	r, g, b, err := ScaledColor(hex, percent)
+	if err != nil {
+		return err
+	}
+
+	s.strip.SetColor(r, g, b)
+	if !s.state.Enabled {
+		return nil
+	}
+
+	if err := s.strip.On(); err != nil {
+		if prevR, prevG, prevB, perr := ScaledColor(s.state.Color, s.state.Brightness); perr == nil {
+			s.strip.SetColor(prevR, prevG, prevB)
+		}
+		return fmt.Errorf("apply RGB strip: %w", err)
+	}
+	return nil
 }

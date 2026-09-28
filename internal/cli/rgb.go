@@ -73,6 +73,9 @@ func newRGBBrightnessCmd() *cobra.Command {
 		Use:   "brightness <0-100>",
 		Short: "Set the RGB strip's brightness",
 		Args:  cobra.ExactArgs(1),
+		// A negative value like "-5" would otherwise be parsed by pflag as an
+		// unknown shorthand flag before it ever reaches Atoi/ValidateBrightness.
+		DisableFlagParsing: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			percent, err := strconv.Atoi(args[0])
 			if err != nil {

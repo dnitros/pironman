@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"bytes"
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -420,6 +422,28 @@ func TestRGBHandlersBrightnessRejectsOutOfRangeWithoutMutatingCfg(t *testing.T) 
 	}
 }
 
+func TestRGBBrightnessHandlerRejectsNonFinitePercent(t *testing.T) {
+	strip := &fakeStrip{}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: false, Color: "#ffffff", Brightness: 100})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	cfg := config.Default()
+	cfg.RGB.Brightness = 100
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+	var opMu sync.Mutex
+	handler := rgbBrightnessHandler(store, &cfg, cfgPath, &opMu)
+
+	for _, percent := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
+		if _, err := handler(map[string]any{"percent": percent}); err == nil {
+			t.Fatalf("percent=%v: expected an error", percent)
+		}
+	}
+	if cfg.RGB.Brightness != 100 {
+		t.Fatalf("expected cfg to remain unchanged, got %d", cfg.RGB.Brightness)
+	}
+}
+
 func TestRGBHandlersBrightnessCommitsPersistedBrightnessEvenWhenStripFails(t *testing.T) {
 	strip := &fakeStrip{}
 	store, err := rgb.NewStore(strip, rgb.State{Enabled: true, Color: "#ffffff", Brightness: 100})
@@ -533,6 +557,26 @@ func TestRunRGBColorPropagatesHandlerError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "boom") {
 		t.Fatalf("expected error to include the handler's message, got: %v", err)
+	}
+}
+
+func TestRGBBrightnessCommandAcceptsNegativeValue(t *testing.T) {
+	root := NewRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"rgb", "brightness", "-5"})
+	t.Setenv(ipc.SocketPathEnvVar, filepath.Join(t.TempDir(), "no-such-daemon.sock"))
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatalf("expected an error since no daemon is running")
+	}
+	if strings.Contains(err.Error(), "shorthand") || strings.Contains(err.Error(), "unknown flag") {
+		t.Fatalf("expected \"-5\" to be parsed as the brightness value, not a flag, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "unreachable") {
+		t.Fatalf("expected a daemon-unreachable error once parsing succeeds, got: %v", err)
 	}
 }
 
