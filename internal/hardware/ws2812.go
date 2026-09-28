@@ -30,7 +30,7 @@ type WS2812Strip interface {
 	SetColor(r, g, b byte)
 }
 
-// SPIWS2812 drives a WS2812 strip over SPI at a fixed solid color.
+// SPIWS2812 drives a WS2812 strip over SPI at a settable solid color.
 type SPIWS2812 struct {
 	conn    spi.Conn
 	numLEDs int
