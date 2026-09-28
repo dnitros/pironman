@@ -416,3 +416,17 @@ func TestStorePersistsAcrossSimulatedRestart(t *testing.T) {
 		t.Fatalf("expected the restarted store to reapply Off() once, got on=%d off=%d", restartedStrip.onCalls, restartedStrip.offCalls)
 	}
 }
+
+func TestStoreStateReportsCurrentSnapshot(t *testing.T) {
+	strip := &fakeStrip{}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: true, Color: "#ff00ff", Brightness: 42})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+
+	got := store.State()
+	want := rgb.State{Enabled: true, Color: "#ff00ff", Brightness: 42}
+	if got != want {
+		t.Fatalf("State() = %+v, want %+v", got, want)
+	}
+}

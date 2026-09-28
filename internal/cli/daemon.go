@@ -250,7 +250,7 @@ func runDaemon(ctx context.Context) error {
 
 	path := ipc.SocketPath()
 
-	handlers := map[string]ipc.Handler{"ping": handlePing}
+	handlers := map[string]ipc.Handler{"ping": handlePing, "status": statusHandler(rgbStore)}
 	maps.Copy(handlers, rgbHandlers(rgbStore, &cfg, cfgPath))
 
 	srv := ipc.NewServer(handlers)
@@ -267,6 +267,20 @@ func runDaemon(ctx context.Context) error {
 
 func handlePing(args map[string]any) (any, error) {
 	return map[string]string{"message": "pong"}, nil
+}
+
+// statusHandler reports the daemon's current RGB state for the "status" IPC
+// command, reading a single snapshot from store so the reported fields never
+// straddle a concurrent mutation.
+func statusHandler(store *rgb.Store) ipc.Handler {
+	return func(args map[string]any) (any, error) {
+		state := store.State()
+		return map[string]any{
+			"enabled":    state.Enabled,
+			"color":      state.Color,
+			"brightness": state.Brightness,
+		}, nil
+	}
 }
 
 // rgbHandlers registers the rgb.on/rgb.off/rgb.color/rgb.brightness IPC
