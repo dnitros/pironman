@@ -74,9 +74,14 @@ func newRGBBrightnessCmd() *cobra.Command {
 		Short: "Set the RGB strip's brightness",
 		Args:  cobra.ExactArgs(1),
 		// A negative value like "-5" would otherwise be parsed by pflag as an
-		// unknown shorthand flag before it ever reaches Atoi/ValidateBrightness.
+		// unknown shorthand flag before it ever reaches Atoi/ValidateBrightness,
+		// so flag parsing (including cobra's automatic -h/--help) is disabled
+		// and handled manually below.
 		DisableFlagParsing: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if args[0] == "-h" || args[0] == "--help" {
+				return cmd.Help()
+			}
 			percent, err := strconv.Atoi(args[0])
 			if err != nil {
 				return fmt.Errorf("rgb brightness: %q is not a valid integer", args[0])

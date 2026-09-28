@@ -422,6 +422,40 @@ func TestRGBHandlersBrightnessRejectsOutOfRangeWithoutMutatingCfg(t *testing.T) 
 	}
 }
 
+func TestRGBHandlersBrightnessPropagatesPersistErrorWithoutMutatingCfg(t *testing.T) {
+	strip := &fakeStrip{}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: false, Color: "#ffffff", Brightness: 100})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	cfg := config.Default()
+	cfg.RGB.Brightness = 100
+
+	// A regular file in place of the config directory makes cfg.Save's
+	// os.MkdirAll fail, so the persist step returns an error.
+	blocker := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(blocker, nil, 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	cfgPath := filepath.Join(blocker, "config.yaml")
+
+	path := startTestDaemon(t, rgbHandlers(store, &cfg, cfgPath))
+
+	resp, err := ipc.Send(path, "rgb.brightness", map[string]any{"percent": 50})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if resp.OK {
+		t.Fatalf("expected ok=false when persisting fails")
+	}
+	if cfg.RGB.Brightness != 100 {
+		t.Fatalf("expected cfg to remain unchanged when persist fails, got %d", cfg.RGB.Brightness)
+	}
+	if strip.setColorCalls != 0 {
+		t.Fatalf("expected the strip to never be touched when persisting fails, got %d SetColor() calls", strip.setColorCalls)
+	}
+}
+
 func TestRGBBrightnessHandlerRejectsNonFinitePercent(t *testing.T) {
 	strip := &fakeStrip{}
 	store, err := rgb.NewStore(strip, rgb.State{Enabled: false, Color: "#ffffff", Brightness: 100})
@@ -577,6 +611,21 @@ func TestRGBBrightnessCommandAcceptsNegativeValue(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "unreachable") {
 		t.Fatalf("expected a daemon-unreachable error once parsing succeeds, got: %v", err)
+	}
+}
+
+func TestRGBBrightnessCommandStillShowsHelp(t *testing.T) {
+	root := NewRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"rgb", "brightness", "--help"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("expected --help to succeed, got: %v", err)
+	}
+	if !strings.Contains(out.String(), "Usage:") {
+		t.Fatalf("expected usage text, got: %q", out.String())
 	}
 }
 
