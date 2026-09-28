@@ -27,6 +27,7 @@ const spiFrequency = 2400 * physic.KiloHertz // ~2.4 MHz — 3 SPI bits per WS28
 type WS2812Strip interface {
 	On() error
 	Off() error
+	SetColor(r, g, b byte)
 }
 
 // SPIWS2812 drives a WS2812 strip over SPI at a fixed solid color.
@@ -65,6 +66,12 @@ func (s *SPIWS2812) Off() error {
 		return fmt.Errorf("write WS2812 off-state: %w", err)
 	}
 	return nil
+}
+
+// SetColor updates the color a subsequent On() writes to the strip; it does
+// not write to the bus itself.
+func (s *SPIWS2812) SetColor(r, g, b byte) {
+	s.r, s.g, s.b = r, g, b
 }
 
 const (

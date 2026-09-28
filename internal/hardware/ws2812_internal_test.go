@@ -38,6 +38,14 @@ func TestEncodeWS2812OnIsOneBitPattern(t *testing.T) {
 	}
 }
 
+func TestSPIWS2812SetColorUpdatesStoredColor(t *testing.T) {
+	s := &SPIWS2812{numLEDs: 1}
+	s.SetColor(0x11, 0x22, 0x33)
+	if s.r != 0x11 || s.g != 0x22 || s.b != 0x33 {
+		t.Fatalf("SetColor: got r=%#x g=%#x b=%#x, want r=0x11 g=0x22 b=0x33", s.r, s.g, s.b)
+	}
+}
+
 func TestEncodeWS2812ResetTailIsZero(t *testing.T) {
 	got := encodeWS2812(1, 0xff, 0xff, 0xff)
 	tail := got[len(got)-resetBytes:]

@@ -3,15 +3,30 @@
 package rgb
 
 import (
+	"encoding/hex"
 	"fmt"
 	"sync"
 
 	"github.com/dnitros/pironman/internal/hardware"
 )
 
-// State is the RGB strip's persisted on/off state.
+// State is the RGB strip's persisted on/off and color state.
 type State struct {
 	Enabled bool
+	Color   string
+}
+
+// ParseColor validates hexColor as a "#RRGGBB" string and decodes its RGB
+// bytes.
+func ParseColor(hexColor string) (r, g, b byte, err error) {
+	if len(hexColor) != 7 || hexColor[0] != '#' {
+		return 0, 0, 0, fmt.Errorf("invalid color %q: want a 6-digit hex color like #ff00ff", hexColor)
+	}
+	raw, err := hex.DecodeString(hexColor[1:])
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("invalid color %q: want a 6-digit hex color like #ff00ff", hexColor)
+	}
+	return raw[0], raw[1], raw[2], nil
 }
 
 // Store is the daemon's mutex-guarded in-process RGB state. It applies the
@@ -68,4 +83,32 @@ func (s *Store) Enabled() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.state.Enabled
+}
+
+// SetColor validates hex, sets the strip's color, and — if the strip is
+// currently enabled — reapplies it immediately so the change is visible.
+func (s *Store) SetColor(hex string) (State, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	r, g, b, err := ParseColor(hex)
+	if err != nil {
+		return s.state, err
+	}
+
+	s.strip.SetColor(r, g, b)
+	if s.state.Enabled {
+		if err := s.strip.On(); err != nil {
+			return s.state, fmt.Errorf("apply RGB strip color: %w", err)
+		}
+	}
+	s.state.Color = hex
+	return s.state, nil
+}
+
+// Color reports the current color.
+func (s *Store) Color() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.state.Color
 }
