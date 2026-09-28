@@ -13,9 +13,10 @@ go build -o pironman ./cmd/pironman
 The CLI and daemon talk over a Unix domain socket (default `/run/pironman/pironman.sock`, override with `PIRONMAN_SOCKET_PATH`). `/run` needs root, so for local testing:
 
 ```sh
-PIRONMAN_SOCKET_PATH=/tmp/pironman.sock ./pironman daemon run &
 PIRONMAN_SOCKET_PATH=/tmp/pironman.sock ./pironman doctor
 ```
+
+As of Phase 1, `daemon run` opens the Pironman 5's WS2812 RGB strip over SPI at startup, so it only runs on the actual case hardware with SPI enabled — it can't be smoke-tested standalone on a dev machine anymore. `internal/hardware` and `internal/rgb` are unit-tested against hand-rolled fakes instead (see `go test` below).
 
 Run tests with:
 
@@ -55,3 +56,5 @@ Manage the service afterward with `daemon stop`, `daemon start`, `daemon enable`
 All `daemon` subcommands (and `doctor`) detect whether `systemctl` is on `$PATH` first. On a non-systemd machine (e.g. macOS, or a systemd-less Linux distro), `daemon install`/`uninstall`/`start`/`stop`/`enable`/`disable` fail immediately with a clear "unsupported platform" message instead of a raw exec error, and `doctor` reports `platform: unsupported` instead of hard-erroring.
 
 Config lives at `/etc/pironman/config.yaml` by default (override with `PIRONMAN_CONFIG_PATH`).
+
+The daemon drives the onboard WS2812 RGB strip over SPI, so SPI must be enabled first (`sudo raspi-config` → Interface Options → SPI, or `dtparam=spi=on` in `/boot/firmware/config.txt`) — otherwise `daemon start` fails to open `/dev/spidev0.0`.
