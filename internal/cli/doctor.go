@@ -15,8 +15,6 @@ import (
 	"github.com/dnitros/pironman/internal/systemdunit"
 )
 
-// spiDevPath is the SPI device node checked to determine whether SPI is
-// enabled on the host.
 const spiDevPath = "/dev/spidev0.0"
 
 type DoctorInfo struct {

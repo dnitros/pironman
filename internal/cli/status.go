@@ -40,8 +40,6 @@ func gatherStatus(socketPath string) (StatusInfo, error) {
 		return StatusInfo{}, fmt.Errorf("status: %s", resp.Error)
 	}
 
-	// JSON numbers decode to float64, so brightness arrives as a float64 even
-	// though the daemon sends an int.
 	data, _ := resp.Data.(map[string]any)
 	enabled, _ := data["enabled"].(bool)
 	color, _ := data["color"].(string)
