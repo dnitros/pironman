@@ -70,13 +70,9 @@ func runRGBColor(socketPath, hex string) error {
 
 func newRGBBrightnessCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "brightness <0-100>",
-		Short: "Set the RGB strip's brightness",
-		Args:  cobra.ExactArgs(1),
-		// A negative value like "-5" would otherwise be parsed by pflag as an
-		// unknown shorthand flag before it ever reaches Atoi/ValidateBrightness,
-		// so flag parsing (including cobra's automatic -h/--help) is disabled
-		// and handled manually below.
+		Use:                "brightness <0-100>",
+		Short:              "Set the RGB strip's brightness",
+		Args:               cobra.ExactArgs(1),
 		DisableFlagParsing: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if args[0] == "-h" || args[0] == "--help" {

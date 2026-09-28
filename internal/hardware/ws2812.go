@@ -1,5 +1,3 @@
-// Package hardware isolates real hardware access (SPI/I2C/GPIO/sysfs) behind
-// small interfaces so domain packages can be unit-tested without a Pi.
 package hardware
 
 import (
@@ -11,34 +9,24 @@ import (
 	"periph.io/x/host/v3"
 )
 
-// SPIPort is the WS2812 strip's SPI bus on a Pironman 5 base edition: GPIO10
-// (SPI0 MOSI).
 const SPIPort = "SPI0.0"
 
-// NumLEDs is the Pironman 5 base edition's fixed onboard WS2812 LED count
-// (SunFounder docs: 4 LEDs on GPIO10/SPI0 MOSI). Not a config field in v1 —
-// per PLAN.md §4, case-specific hardware constants stay out of the schema
-// until a variant needs them configurable.
 const NumLEDs = 4
 
 const spiFrequency = 2400 * physic.KiloHertz // ~2.4 MHz — 3 SPI bits per WS2812 bit
 
-// WS2812Strip is the hardware boundary for the addressable RGB LED strip.
 type WS2812Strip interface {
 	On() error
 	Off() error
 	SetColor(r, g, b byte)
 }
 
-// SPIWS2812 drives a WS2812 strip over SPI at a settable solid color.
 type SPIWS2812 struct {
 	conn    spi.Conn
 	numLEDs int
 	r, g, b byte
 }
 
-// NewSPIWS2812 opens port and returns a strip driver that lights numLEDs
-// pixels at the given color when On.
 func NewSPIWS2812(port string, numLEDs int, r, g, b byte) (*SPIWS2812, error) {
 	if _, err := host.Init(); err != nil {
 		return nil, fmt.Errorf("init periph host: %w", err)
@@ -68,8 +56,6 @@ func (s *SPIWS2812) Off() error {
 	return nil
 }
 
-// SetColor updates the color a subsequent On() writes to the strip; it does
-// not write to the bus itself.
 func (s *SPIWS2812) SetColor(r, g, b byte) {
 	s.r, s.g, s.b = r, g, b
 }
@@ -88,7 +74,6 @@ const (
 // timed by spiFrequency to match the WS2812 protocol's high/low bit widths.
 var wsBitPattern = [2]byte{0b100, 0b110}
 
-// encodeWS2812 renders numLEDs solid-color GRB pixels into a WS2812 SPI bitstream.
 func encodeWS2812(numLEDs int, r, g, b byte) []byte {
 	buf := make([]byte, 0, numLEDs*9+resetBytes)
 
