@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -78,6 +79,37 @@ func TestRGBHandlersOffPersistsStateAndCallsStrip(t *testing.T) {
 	}
 	if saved.RGB.Enabled {
 		t.Fatalf("expected the saved config to have rgb.enabled=false")
+	}
+}
+
+func TestRGBHandlersPropagatesPersistErrorWithoutMutatingCfg(t *testing.T) {
+	strip := &fakeStrip{}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: false})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	cfg := config.Default()
+	cfg.RGB.Enabled = false
+
+	// A regular file in place of the config directory makes cfg.Save's
+	// os.MkdirAll fail, so the persist step returns an error.
+	blocker := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(blocker, nil, 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	cfgPath := filepath.Join(blocker, "config.yaml")
+
+	path := startTestDaemon(t, rgbHandlers(store, &cfg, cfgPath))
+
+	resp, err := ipc.Send(path, "rgb.on", nil)
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if resp.OK {
+		t.Fatalf("expected ok=false when persisting fails")
+	}
+	if cfg.RGB.Enabled {
+		t.Fatalf("expected cfg to remain unchanged when persist fails, got enabled=true")
 	}
 }
 

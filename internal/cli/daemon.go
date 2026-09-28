@@ -267,18 +267,22 @@ func handlePing(args map[string]any) (any, error) {
 
 // rgbHandlers registers the rgb.on/rgb.off IPC commands against store,
 // persisting the resulting state to cfg/cfgPath on every call. cfg and
-// cfgPath are shared across concurrent IPC connections, so persistence is
-// serialized through persistMu.
+// cfgPath are shared across concurrent IPC connections; opMu serializes each
+// call's store mutation together with its persist so the two can't reorder
+// relative to a competing call.
 func rgbHandlers(store *rgb.Store, cfg *config.Config, cfgPath string) map[string]ipc.Handler {
-	var persistMu sync.Mutex
+	var opMu sync.Mutex
 	return map[string]ipc.Handler{
-		"rgb.on":  rgbSetHandler(store, cfg, cfgPath, &persistMu, true),
-		"rgb.off": rgbSetHandler(store, cfg, cfgPath, &persistMu, false),
+		"rgb.on":  rgbSetHandler(store, cfg, cfgPath, &opMu, true),
+		"rgb.off": rgbSetHandler(store, cfg, cfgPath, &opMu, false),
 	}
 }
 
-func rgbSetHandler(store *rgb.Store, cfg *config.Config, cfgPath string, persistMu *sync.Mutex, enabled bool) ipc.Handler {
+func rgbSetHandler(store *rgb.Store, cfg *config.Config, cfgPath string, opMu *sync.Mutex, enabled bool) ipc.Handler {
 	return func(args map[string]any) (any, error) {
+		opMu.Lock()
+		defer opMu.Unlock()
+
 		var (
 			state rgb.State
 			err   error
@@ -292,12 +296,13 @@ func rgbSetHandler(store *rgb.Store, cfg *config.Config, cfgPath string, persist
 			return nil, err
 		}
 
-		persistMu.Lock()
-		defer persistMu.Unlock()
-		cfg.RGB.Enabled = state.Enabled
-		if err := cfg.Save(cfgPath); err != nil {
+		updated := *cfg
+		updated.RGB.Enabled = state.Enabled
+		if err := updated.Save(cfgPath); err != nil {
 			return nil, fmt.Errorf("persist RGB state: %w", err)
 		}
+		*cfg = updated
+
 		return map[string]bool{"enabled": state.Enabled}, nil
 	}
 }
