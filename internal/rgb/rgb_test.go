@@ -115,7 +115,7 @@ func TestStoreOnPropagatesHardwareErrorWithoutChangingState(t *testing.T) {
 
 func TestStoreSetColorAppliesImmediatelyWhenEnabled(t *testing.T) {
 	strip := &fakeStrip{}
-	store, err := rgb.NewStore(strip, rgb.State{Enabled: true})
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: true, Brightness: 100})
 	if err != nil {
 		t.Fatalf("NewStore: %v", err)
 	}
@@ -217,6 +217,158 @@ func TestStoreSetColorRevertsHardwareColorOnFailedReapply(t *testing.T) {
 	}
 	if strip.setColorCalls != 2 {
 		t.Fatalf("expected strip.SetColor() to be called twice (the failed attempt, then the revert), got %d", strip.setColorCalls)
+	}
+}
+
+func TestStoreSetColorScalesByCurrentBrightness(t *testing.T) {
+	strip := &fakeStrip{}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: true, Color: "#ffffff", Brightness: 100})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	if _, err := store.SetBrightness(50); err != nil {
+		t.Fatalf("SetBrightness: %v", err)
+	}
+
+	if _, err := store.SetColor("#00ff00"); err != nil {
+		t.Fatalf("SetColor: %v", err)
+	}
+	if strip.lastR != 0x00 || strip.lastG != 0x7f || strip.lastB != 0x00 {
+		t.Fatalf("expected color scaled by the current 50%% brightness (0x00, 0x7f, 0x00), got (%#x, %#x, %#x)", strip.lastR, strip.lastG, strip.lastB)
+	}
+}
+
+func TestStoreSetBrightnessAppliesImmediatelyWhenEnabled(t *testing.T) {
+	strip := &fakeStrip{}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: true, Color: "#ffffff", Brightness: 100})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+
+	state, err := store.SetBrightness(50)
+	if err != nil {
+		t.Fatalf("SetBrightness: %v", err)
+	}
+	if state.Brightness != 50 || store.Brightness() != 50 {
+		t.Fatalf("expected brightness 50, got state=%d store=%d", state.Brightness, store.Brightness())
+	}
+	if strip.lastR != 0x7f || strip.lastG != 0x7f || strip.lastB != 0x7f {
+		t.Fatalf("expected strip color bytes scaled to 50%% (0x7f, 0x7f, 0x7f), got (%#x, %#x, %#x)", strip.lastR, strip.lastG, strip.lastB)
+	}
+	if strip.onCalls != 2 {
+		t.Fatalf("expected strip.On() to be called twice (initial apply + reapply after brightness change), got %d", strip.onCalls)
+	}
+}
+
+func TestStoreSetBrightnessStoresWithoutReapplyingWhenDisabled(t *testing.T) {
+	strip := &fakeStrip{}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: false, Color: "#ffffff", Brightness: 100})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+
+	state, err := store.SetBrightness(50)
+	if err != nil {
+		t.Fatalf("SetBrightness: %v", err)
+	}
+	if state.Brightness != 50 {
+		t.Fatalf("expected state.Brightness to be 50, got %d", state.Brightness)
+	}
+	if strip.onCalls != 0 {
+		t.Fatalf("expected strip.On() to never be called while disabled, got %d", strip.onCalls)
+	}
+}
+
+func TestStoreSetBrightnessAppliesWhenLaterTurnedOn(t *testing.T) {
+	strip := &fakeStrip{}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: false, Color: "#ff00ff", Brightness: 100})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	if _, err := store.SetBrightness(50); err != nil {
+		t.Fatalf("SetBrightness: %v", err)
+	}
+
+	if _, err := store.On(); err != nil {
+		t.Fatalf("On: %v", err)
+	}
+	if strip.onCalls != 1 {
+		t.Fatalf("expected strip.On() to be called once, got %d", strip.onCalls)
+	}
+	if strip.lastR != 0x7f || strip.lastG != 0x00 || strip.lastB != 0x7f {
+		t.Fatalf("expected the brightness set while off to apply once turned on (0x7f, 0x00, 0x7f), got (%#x, %#x, %#x)", strip.lastR, strip.lastG, strip.lastB)
+	}
+}
+
+func TestStoreSetBrightnessRejectsOutOfRange(t *testing.T) {
+	tests := []int{-1, 101, 1000}
+	for _, pct := range tests {
+		strip := &fakeStrip{}
+		store, err := rgb.NewStore(strip, rgb.State{Enabled: false, Color: "#ffffff", Brightness: 100})
+		if err != nil {
+			t.Fatalf("NewStore: %v", err)
+		}
+
+		if _, err := store.SetBrightness(pct); err == nil {
+			t.Fatalf("SetBrightness(%d): expected an error", pct)
+		}
+		if strip.setColorCalls != 0 {
+			t.Fatalf("SetBrightness(%d): expected the strip to never be touched for invalid input, got %d calls", pct, strip.setColorCalls)
+		}
+	}
+}
+
+func TestStoreSetBrightnessPropagatesHardwareErrorWithoutChangingState(t *testing.T) {
+	strip := &fakeStrip{}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: true, Color: "#ffffff", Brightness: 100})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	strip.onErr = errBoom
+
+	if _, err := store.SetBrightness(50); err == nil {
+		t.Fatalf("expected SetBrightness to propagate the hardware error")
+	}
+	if store.Brightness() != 100 {
+		t.Fatalf("expected brightness to remain unchanged after a failed reapply, got %d", store.Brightness())
+	}
+}
+
+func TestStoreSetBrightnessRevertsHardwareColorOnFailedReapply(t *testing.T) {
+	strip := &fakeStrip{}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: true, Color: "#ffffff", Brightness: 100})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	strip.onErr = errBoom
+
+	if _, err := store.SetBrightness(50); err == nil {
+		t.Fatalf("expected SetBrightness to propagate the hardware error")
+	}
+
+	if strip.lastR != 0xff || strip.lastG != 0xff || strip.lastB != 0xff {
+		t.Fatalf("expected the strip's buffered color to be reverted to full brightness, got (%#x, %#x, %#x)", strip.lastR, strip.lastG, strip.lastB)
+	}
+}
+
+func TestStoreBrightnessPersistsAcrossSimulatedRestart(t *testing.T) {
+	strip := &fakeStrip{}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: true, Color: "#ffffff", Brightness: 100})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	if _, err := store.SetBrightness(42); err != nil {
+		t.Fatalf("SetBrightness: %v", err)
+	}
+
+	restartedStrip := &fakeStrip{}
+	restarted, err := rgb.NewStore(restartedStrip, rgb.State{Enabled: true, Color: "#ffffff", Brightness: store.Brightness()})
+	if err != nil {
+		t.Fatalf("NewStore (restart): %v", err)
+	}
+
+	if restarted.Brightness() != 42 {
+		t.Fatalf("expected the brightness to survive the simulated restart, got %d", restarted.Brightness())
 	}
 }
 

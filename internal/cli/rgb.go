@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -16,6 +17,7 @@ func newRGBCmd() *cobra.Command {
 	cmd.AddCommand(newRGBSetCmd("on", "Turn the RGB strip on"))
 	cmd.AddCommand(newRGBSetCmd("off", "Turn the RGB strip off"))
 	cmd.AddCommand(newRGBColorCmd())
+	cmd.AddCommand(newRGBBrightnessCmd())
 	return cmd
 }
 
@@ -63,5 +65,41 @@ func runRGBColor(socketPath, hex string) error {
 	}
 
 	fmt.Printf("RGB strip color set to %s\n", hex)
+	return nil
+}
+
+func newRGBBrightnessCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "brightness <0-100>",
+		Short: "Set the RGB strip's brightness",
+		Args:  cobra.ExactArgs(1),
+		// A negative value like "-5" would otherwise be parsed by pflag as an
+		// unknown shorthand flag before it ever reaches Atoi/ValidateBrightness,
+		// so flag parsing (including cobra's automatic -h/--help) is disabled
+		// and handled manually below.
+		DisableFlagParsing: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if args[0] == "-h" || args[0] == "--help" {
+				return cmd.Help()
+			}
+			percent, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("rgb brightness: %q is not a valid integer", args[0])
+			}
+			return runRGBBrightness(ipc.SocketPath(), percent)
+		},
+	}
+}
+
+func runRGBBrightness(socketPath string, percent int) error {
+	resp, err := ipc.Send(socketPath, "rgb.brightness", map[string]any{"percent": percent})
+	if err != nil {
+		return fmt.Errorf("rgb brightness: daemon unreachable: %w", err)
+	}
+	if !resp.OK {
+		return fmt.Errorf("rgb brightness: %s", resp.Error)
+	}
+
+	fmt.Printf("RGB strip brightness set to %d\n", percent)
 	return nil
 }

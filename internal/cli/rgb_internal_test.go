@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"bytes"
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -325,6 +327,193 @@ func TestRGBHandlersColorCommitsPersistedColorEvenWhenStripFails(t *testing.T) {
 	}
 }
 
+func TestRGBHandlersBrightnessAppliesImmediatelyWhenEnabled(t *testing.T) {
+	strip := &fakeStrip{}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: true, Color: "#ffffff", Brightness: 100})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	cfg := config.Default()
+	cfg.RGB.Enabled = true
+	cfg.RGB.Color = "#ffffff"
+	cfg.RGB.Brightness = 100
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+
+	path := startTestDaemon(t, rgbHandlers(store, &cfg, cfgPath))
+
+	resp, err := ipc.Send(path, "rgb.brightness", map[string]any{"percent": 50})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if !resp.OK {
+		t.Fatalf("expected ok=true, got error %q", resp.Error)
+	}
+	if strip.onCalls != 2 {
+		t.Fatalf("expected strip.On() to be called twice (initial apply + reapply), got %d", strip.onCalls)
+	}
+
+	saved, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	if saved.RGB.Brightness != 50 {
+		t.Fatalf("expected the saved config to have rgb.brightness=50, got %d", saved.RGB.Brightness)
+	}
+}
+
+func TestRGBHandlersBrightnessStoresWithoutReapplyingWhenDisabled(t *testing.T) {
+	strip := &fakeStrip{}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: false, Color: "#ffffff", Brightness: 100})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	cfg := config.Default()
+	cfg.RGB.Enabled = false
+	cfg.RGB.Color = "#ffffff"
+	cfg.RGB.Brightness = 100
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+
+	path := startTestDaemon(t, rgbHandlers(store, &cfg, cfgPath))
+
+	resp, err := ipc.Send(path, "rgb.brightness", map[string]any{"percent": 50})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if !resp.OK {
+		t.Fatalf("expected ok=true, got error %q", resp.Error)
+	}
+	if strip.onCalls != 0 {
+		t.Fatalf("expected strip.On() to never be called while disabled, got %d", strip.onCalls)
+	}
+
+	saved, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	if saved.RGB.Brightness != 50 {
+		t.Fatalf("expected the saved config to have rgb.brightness=50, got %d", saved.RGB.Brightness)
+	}
+}
+
+func TestRGBHandlersBrightnessRejectsOutOfRangeWithoutMutatingCfg(t *testing.T) {
+	strip := &fakeStrip{}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: false, Color: "#ffffff", Brightness: 100})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	cfg := config.Default()
+	cfg.RGB.Brightness = 100
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+
+	path := startTestDaemon(t, rgbHandlers(store, &cfg, cfgPath))
+
+	resp, err := ipc.Send(path, "rgb.brightness", map[string]any{"percent": 150})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if resp.OK {
+		t.Fatalf("expected ok=false for out-of-range brightness")
+	}
+	if strip.setColorCalls != 0 {
+		t.Fatalf("expected the strip to never be touched for out-of-range brightness, got %d calls", strip.setColorCalls)
+	}
+	if cfg.RGB.Brightness != 100 {
+		t.Fatalf("expected cfg to remain unchanged for out-of-range brightness, got %d", cfg.RGB.Brightness)
+	}
+}
+
+func TestRGBHandlersBrightnessPropagatesPersistErrorWithoutMutatingCfg(t *testing.T) {
+	strip := &fakeStrip{}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: false, Color: "#ffffff", Brightness: 100})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	cfg := config.Default()
+	cfg.RGB.Brightness = 100
+
+	// A regular file in place of the config directory makes cfg.Save's
+	// os.MkdirAll fail, so the persist step returns an error.
+	blocker := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(blocker, nil, 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	cfgPath := filepath.Join(blocker, "config.yaml")
+
+	path := startTestDaemon(t, rgbHandlers(store, &cfg, cfgPath))
+
+	resp, err := ipc.Send(path, "rgb.brightness", map[string]any{"percent": 50})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if resp.OK {
+		t.Fatalf("expected ok=false when persisting fails")
+	}
+	if cfg.RGB.Brightness != 100 {
+		t.Fatalf("expected cfg to remain unchanged when persist fails, got %d", cfg.RGB.Brightness)
+	}
+	if strip.setColorCalls != 0 {
+		t.Fatalf("expected the strip to never be touched when persisting fails, got %d SetColor() calls", strip.setColorCalls)
+	}
+}
+
+func TestRGBBrightnessHandlerRejectsNonFinitePercent(t *testing.T) {
+	strip := &fakeStrip{}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: false, Color: "#ffffff", Brightness: 100})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	cfg := config.Default()
+	cfg.RGB.Brightness = 100
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+	var opMu sync.Mutex
+	handler := rgbBrightnessHandler(store, &cfg, cfgPath, &opMu)
+
+	for _, percent := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
+		if _, err := handler(map[string]any{"percent": percent}); err == nil {
+			t.Fatalf("percent=%v: expected an error", percent)
+		}
+	}
+	if cfg.RGB.Brightness != 100 {
+		t.Fatalf("expected cfg to remain unchanged, got %d", cfg.RGB.Brightness)
+	}
+}
+
+func TestRGBHandlersBrightnessCommitsPersistedBrightnessEvenWhenStripFails(t *testing.T) {
+	strip := &fakeStrip{}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: true, Color: "#ffffff", Brightness: 100})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	strip.onErr = errors.New("spi write failed")
+
+	cfg := config.Default()
+	cfg.RGB.Enabled = true
+	cfg.RGB.Color = "#ffffff"
+	cfg.RGB.Brightness = 100
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+
+	path := startTestDaemon(t, rgbHandlers(store, &cfg, cfgPath))
+
+	resp, err := ipc.Send(path, "rgb.brightness", map[string]any{"percent": 42})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if resp.OK {
+		t.Fatalf("expected ok=false when the strip write fails")
+	}
+
+	saved, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	if saved.RGB.Brightness != 42 {
+		t.Fatalf("expected the intended brightness to be persisted despite the strip failure, got %d", saved.RGB.Brightness)
+	}
+	if cfg.RGB.Brightness != 42 {
+		t.Fatalf("expected cfg to reflect the persisted brightness despite the strip failure, got %d", cfg.RGB.Brightness)
+	}
+}
+
 func TestRunRGBSetRoundTrip(t *testing.T) {
 	path := startTestDaemon(t, map[string]ipc.Handler{
 		"rgb.on": func(args map[string]any) (any, error) {
@@ -397,6 +586,81 @@ func TestRunRGBColorPropagatesHandlerError(t *testing.T) {
 	})
 
 	err := runRGBColor(path, "#ff00ff")
+	if err == nil {
+		t.Fatalf("expected an error when the handler fails")
+	}
+	if !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("expected error to include the handler's message, got: %v", err)
+	}
+}
+
+func TestRGBBrightnessCommandAcceptsNegativeValue(t *testing.T) {
+	root := NewRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"rgb", "brightness", "-5"})
+	t.Setenv(ipc.SocketPathEnvVar, filepath.Join(t.TempDir(), "no-such-daemon.sock"))
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatalf("expected an error since no daemon is running")
+	}
+	if strings.Contains(err.Error(), "shorthand") || strings.Contains(err.Error(), "unknown flag") {
+		t.Fatalf("expected \"-5\" to be parsed as the brightness value, not a flag, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "unreachable") {
+		t.Fatalf("expected a daemon-unreachable error once parsing succeeds, got: %v", err)
+	}
+}
+
+func TestRGBBrightnessCommandStillShowsHelp(t *testing.T) {
+	root := NewRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"rgb", "brightness", "--help"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("expected --help to succeed, got: %v", err)
+	}
+	if !strings.Contains(out.String(), "Usage:") {
+		t.Fatalf("expected usage text, got: %q", out.String())
+	}
+}
+
+func TestRunRGBBrightnessRoundTrip(t *testing.T) {
+	path := startTestDaemon(t, map[string]ipc.Handler{
+		"rgb.brightness": func(args map[string]any) (any, error) {
+			return map[string]int{"brightness": int(args["percent"].(float64))}, nil
+		},
+	})
+
+	if err := runRGBBrightness(path, 50); err != nil {
+		t.Fatalf("runRGBBrightness: %v", err)
+	}
+}
+
+func TestRunRGBBrightnessFailsClearlyWhenDaemonUnreachable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "no-such-daemon.sock")
+
+	err := runRGBBrightness(path, 50)
+	if err == nil {
+		t.Fatalf("expected an error when the daemon is unreachable")
+	}
+	if !strings.Contains(err.Error(), "unreachable") {
+		t.Fatalf("expected error to say the daemon is unreachable, got: %v", err)
+	}
+}
+
+func TestRunRGBBrightnessPropagatesHandlerError(t *testing.T) {
+	path := startTestDaemon(t, map[string]ipc.Handler{
+		"rgb.brightness": func(args map[string]any) (any, error) {
+			return nil, errBoom
+		},
+	})
+
+	err := runRGBBrightness(path, 50)
 	if err == nil {
 		t.Fatalf("expected an error when the handler fails")
 	}

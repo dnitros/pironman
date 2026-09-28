@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"math"
 	"os"
 	"os/signal"
 	"sync"
@@ -234,16 +235,15 @@ func runDaemon(ctx context.Context) error {
 	}
 	fmt.Printf("pironman daemon: loaded config from %s\n", cfgPath)
 
-	// Fixed reference brightness until a later ticket wires cfg.RGB.Brightness into this pipe.
-	r, g, b, err := rgb.ParseColor(cfg.RGB.Color)
+	r, g, b, err := rgb.ScaledColor(cfg.RGB.Color, cfg.RGB.Brightness)
 	if err != nil {
-		return fmt.Errorf("parse configured RGB color: %w", err)
+		return fmt.Errorf("parse configured RGB color/brightness: %w", err)
 	}
 	strip, err := hardware.NewSPIWS2812(hardware.SPIPort, hardware.NumLEDs, r, g, b)
 	if err != nil {
 		return fmt.Errorf("open WS2812 strip: %w", err)
 	}
-	rgbStore, err := rgb.NewStore(strip, rgb.State{Enabled: cfg.RGB.Enabled, Color: cfg.RGB.Color})
+	rgbStore, err := rgb.NewStore(strip, rgb.State{Enabled: cfg.RGB.Enabled, Color: cfg.RGB.Color, Brightness: cfg.RGB.Brightness})
 	if err != nil {
 		return fmt.Errorf("apply initial RGB state: %w", err)
 	}
@@ -269,8 +269,9 @@ func handlePing(args map[string]any) (any, error) {
 	return map[string]string{"message": "pong"}, nil
 }
 
-// rgbHandlers registers the rgb.on/rgb.off IPC commands against store,
-// persisting the resulting state to cfg/cfgPath on every call. cfg and
+// rgbHandlers registers the rgb.on/rgb.off/rgb.color/rgb.brightness IPC
+// commands against store, persisting the resulting state to cfg/cfgPath on
+// every call. cfg and
 // cfgPath are shared across concurrent IPC connections; opMu serializes each
 // call's persist together with its store mutation so the two can't reorder
 // relative to a competing call. Persist always happens before the strip is
@@ -279,10 +280,24 @@ func handlePing(args map[string]any) (any, error) {
 func rgbHandlers(store *rgb.Store, cfg *config.Config, cfgPath string) map[string]ipc.Handler {
 	var opMu sync.Mutex
 	return map[string]ipc.Handler{
-		"rgb.on":    rgbSetHandler(store, cfg, cfgPath, &opMu, true),
-		"rgb.off":   rgbSetHandler(store, cfg, cfgPath, &opMu, false),
-		"rgb.color": rgbColorHandler(store, cfg, cfgPath, &opMu),
+		"rgb.on":         rgbSetHandler(store, cfg, cfgPath, &opMu, true),
+		"rgb.off":        rgbSetHandler(store, cfg, cfgPath, &opMu, false),
+		"rgb.color":      rgbColorHandler(store, cfg, cfgPath, &opMu),
+		"rgb.brightness": rgbBrightnessHandler(store, cfg, cfgPath, &opMu),
 	}
+}
+
+// persistRGB copies cfg, applies mutate to the copy's RGB section, saves the
+// copy, and swaps it into cfg only on success — the persist-before-hardware-
+// write step shared by every rgb.* handler below.
+func persistRGB(cfg *config.Config, cfgPath string, mutate func(*config.RGB)) error {
+	updated := *cfg
+	mutate(&updated.RGB)
+	if err := updated.Save(cfgPath); err != nil {
+		return err
+	}
+	*cfg = updated
+	return nil
 }
 
 func rgbSetHandler(store *rgb.Store, cfg *config.Config, cfgPath string, opMu *sync.Mutex, enabled bool) ipc.Handler {
@@ -290,12 +305,9 @@ func rgbSetHandler(store *rgb.Store, cfg *config.Config, cfgPath string, opMu *s
 		opMu.Lock()
 		defer opMu.Unlock()
 
-		updated := *cfg
-		updated.RGB.Enabled = enabled
-		if err := updated.Save(cfgPath); err != nil {
+		if err := persistRGB(cfg, cfgPath, func(rgbCfg *config.RGB) { rgbCfg.Enabled = enabled }); err != nil {
 			return nil, fmt.Errorf("persist RGB state: %w", err)
 		}
-		*cfg = updated
 
 		var (
 			state rgb.State
@@ -314,8 +326,7 @@ func rgbSetHandler(store *rgb.Store, cfg *config.Config, cfgPath string, opMu *s
 	}
 }
 
-// rgbColorHandler validates the "hex" arg, persists it, then applies it to
-// store, following rgbSetHandler's persist-before-hardware-write ordering.
+// rgbColorHandler validates the "hex" arg before persisting it.
 func rgbColorHandler(store *rgb.Store, cfg *config.Config, cfgPath string, opMu *sync.Mutex) ipc.Handler {
 	return func(args map[string]any) (any, error) {
 		hex, ok := args["hex"].(string)
@@ -329,12 +340,9 @@ func rgbColorHandler(store *rgb.Store, cfg *config.Config, cfgPath string, opMu 
 		opMu.Lock()
 		defer opMu.Unlock()
 
-		updated := *cfg
-		updated.RGB.Color = hex
-		if err := updated.Save(cfgPath); err != nil {
+		if err := persistRGB(cfg, cfgPath, func(rgbCfg *config.RGB) { rgbCfg.Color = hex }); err != nil {
 			return nil, fmt.Errorf("persist RGB color: %w", err)
 		}
-		*cfg = updated
 
 		state, err := store.SetColor(hex)
 		if err != nil {
@@ -342,5 +350,35 @@ func rgbColorHandler(store *rgb.Store, cfg *config.Config, cfgPath string, opMu 
 		}
 
 		return map[string]string{"color": state.Color}, nil
+	}
+}
+
+// rgbBrightnessHandler mirrors rgbColorHandler, validating the "percent" arg
+// before persisting it. JSON numbers decode to float64, so percent arrives
+// as a float64 even though the CLI sends an int.
+func rgbBrightnessHandler(store *rgb.Store, cfg *config.Config, cfgPath string, opMu *sync.Mutex) ipc.Handler {
+	return func(args map[string]any) (any, error) {
+		raw, ok := args["percent"].(float64)
+		if !ok || math.IsNaN(raw) || math.IsInf(raw, 0) {
+			return nil, fmt.Errorf("rgb.brightness: missing or invalid \"percent\" argument")
+		}
+		percent := int(raw)
+		if err := rgb.ValidateBrightness(percent); err != nil {
+			return nil, err
+		}
+
+		opMu.Lock()
+		defer opMu.Unlock()
+
+		if err := persistRGB(cfg, cfgPath, func(rgbCfg *config.RGB) { rgbCfg.Brightness = percent }); err != nil {
+			return nil, fmt.Errorf("persist RGB brightness: %w", err)
+		}
+
+		state, err := store.SetBrightness(percent)
+		if err != nil {
+			return nil, fmt.Errorf("apply RGB brightness: %w", err)
+		}
+
+		return map[string]int{"brightness": state.Brightness}, nil
 	}
 }
