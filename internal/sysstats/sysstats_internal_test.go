@@ -279,3 +279,53 @@ func TestDisksFromMountsReturnsNoneWhenNoRealDisksMounted(t *testing.T) {
 		t.Fatalf("disks = %+v, want none", disks)
 	}
 }
+
+func TestParentDeviceName(t *testing.T) {
+	cases := map[string]string{
+		"/dev/mmcblk0p1": "mmcblk0",
+		"/dev/mmcblk0p2": "mmcblk0",
+		"/dev/sda1":      "sda",
+		"/dev/nvme0n1p1": "nvme0n1",
+		"/dev/sda":       "sda",
+	}
+	for device, want := range cases {
+		if got := parentDeviceName(device); got != want {
+			t.Fatalf("parentDeviceName(%q) = %q, want %q", device, got, want)
+		}
+	}
+}
+
+func TestDisksFromMountsSumsPartitionsOfSameParentDevice(t *testing.T) {
+	entries := []mountEntry{
+		{device: "/dev/mmcblk0p1", mountpoint: "/boot/firmware"},
+		{device: "/dev/sda1", mountpoint: "/mnt/usb"},
+		{device: "/dev/mmcblk0p2", mountpoint: "/"},
+	}
+	usage := func(mountpoint string) (usedBytes, totalBytes uint64, err error) {
+		switch mountpoint {
+		case "/boot/firmware":
+			return 10, 100, nil
+		case "/":
+			return 30, 200, nil
+		case "/mnt/usb":
+			return 5, 50, nil
+		default:
+			return 0, 0, fmt.Errorf("unexpected mountpoint %q", mountpoint)
+		}
+	}
+
+	disks := disksFromMounts(entries, usage)
+
+	want := []Disk{
+		{Type: "sd", UsedBytes: 40, TotalBytes: 300, Percent: 100 * 40.0 / 300.0},
+		{Type: "usb", UsedBytes: 5, TotalBytes: 50, Percent: 10},
+	}
+	if len(disks) != len(want) {
+		t.Fatalf("disks = %+v, want %+v", disks, want)
+	}
+	for i := range want {
+		if disks[i] != want[i] {
+			t.Fatalf("disks[%d] = %+v, want %+v", i, disks[i], want[i])
+		}
+	}
+}
