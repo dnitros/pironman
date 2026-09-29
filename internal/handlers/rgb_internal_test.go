@@ -66,7 +66,7 @@ func TestRGBHandlersOnPersistsStateAndCallsStrip(t *testing.T) {
 	cfg.RGB.Enabled = false
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 
-	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath))
+	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath, &sync.Mutex{}))
 
 	resp, err := ipc.Send(path, "rgb.on", nil)
 	if err != nil {
@@ -98,7 +98,7 @@ func TestRGBHandlersOffPersistsStateAndCallsStrip(t *testing.T) {
 	cfg.RGB.Enabled = true
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 
-	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath))
+	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath, &sync.Mutex{}))
 
 	resp, err := ipc.Send(path, "rgb.off", nil)
 	if err != nil {
@@ -135,7 +135,7 @@ func TestRGBHandlersPropagatesPersistErrorWithoutMutatingCfg(t *testing.T) {
 	}
 	cfgPath := filepath.Join(blocker, "config.yaml")
 
-	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath))
+	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath, &sync.Mutex{}))
 
 	resp, err := ipc.Send(path, "rgb.on", nil)
 	if err != nil {
@@ -162,7 +162,7 @@ func TestRGBHandlersCommitsPersistedStateEvenWhenStripFails(t *testing.T) {
 	cfg.RGB.Enabled = false
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 
-	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath))
+	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath, &sync.Mutex{}))
 
 	resp, err := ipc.Send(path, "rgb.on", nil)
 	if err != nil {
@@ -194,7 +194,7 @@ func TestRGBHandlersConcurrentCallsKeepConfigInSyncWithStore(t *testing.T) {
 	cfg.RGB.Enabled = false
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 
-	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath))
+	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath, &sync.Mutex{}))
 
 	const n = 50
 	var wg sync.WaitGroup
@@ -231,7 +231,7 @@ func TestRGBHandlersColorAppliesImmediatelyWhenEnabled(t *testing.T) {
 	cfg.RGB.Color = "#000000"
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 
-	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath))
+	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath, &sync.Mutex{}))
 
 	resp, err := ipc.Send(path, "rgb.color", map[string]any{"hex": "#ff00ff"})
 	if err != nil {
@@ -267,7 +267,7 @@ func TestRGBHandlersColorStoresWithoutReapplyingWhenDisabled(t *testing.T) {
 	cfg.RGB.Color = "#000000"
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 
-	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath))
+	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath, &sync.Mutex{}))
 
 	resp, err := ipc.Send(path, "rgb.color", map[string]any{"hex": "#00ff00"})
 	if err != nil {
@@ -299,7 +299,7 @@ func TestRGBHandlersColorRejectsInvalidHexWithoutMutatingCfg(t *testing.T) {
 	cfg.RGB.Color = "#000000"
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 
-	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath))
+	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath, &sync.Mutex{}))
 
 	resp, err := ipc.Send(path, "rgb.color", map[string]any{"hex": "not-a-color"})
 	if err != nil {
@@ -329,7 +329,7 @@ func TestRGBHandlersColorCommitsPersistedColorEvenWhenStripFails(t *testing.T) {
 	cfg.RGB.Color = "#000000"
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 
-	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath))
+	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath, &sync.Mutex{}))
 
 	resp, err := ipc.Send(path, "rgb.color", map[string]any{"hex": "#123456"})
 	if err != nil {
@@ -363,7 +363,7 @@ func TestRGBHandlersBrightnessAppliesImmediatelyWhenEnabled(t *testing.T) {
 	cfg.RGB.Brightness = 100
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 
-	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath))
+	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath, &sync.Mutex{}))
 
 	resp, err := ipc.Send(path, "rgb.brightness", map[string]any{"percent": 50})
 	if err != nil {
@@ -397,7 +397,7 @@ func TestRGBHandlersBrightnessStoresWithoutReapplyingWhenDisabled(t *testing.T) 
 	cfg.RGB.Brightness = 100
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 
-	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath))
+	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath, &sync.Mutex{}))
 
 	resp, err := ipc.Send(path, "rgb.brightness", map[string]any{"percent": 50})
 	if err != nil {
@@ -429,7 +429,7 @@ func TestRGBHandlersBrightnessRejectsOutOfRangeWithoutMutatingCfg(t *testing.T) 
 	cfg.RGB.Brightness = 100
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 
-	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath))
+	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath, &sync.Mutex{}))
 
 	resp, err := ipc.Send(path, "rgb.brightness", map[string]any{"percent": 150})
 	if err != nil {
@@ -461,7 +461,7 @@ func TestRGBHandlersBrightnessPropagatesPersistErrorWithoutMutatingCfg(t *testin
 	}
 	cfgPath := filepath.Join(blocker, "config.yaml")
 
-	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath))
+	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath, &sync.Mutex{}))
 
 	resp, err := ipc.Send(path, "rgb.brightness", map[string]any{"percent": 50})
 	if err != nil {
@@ -514,7 +514,7 @@ func TestRGBHandlersBrightnessCommitsPersistedBrightnessEvenWhenStripFails(t *te
 	cfg.RGB.Brightness = 100
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 
-	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath))
+	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath, &sync.Mutex{}))
 
 	resp, err := ipc.Send(path, "rgb.brightness", map[string]any{"percent": 42})
 	if err != nil {

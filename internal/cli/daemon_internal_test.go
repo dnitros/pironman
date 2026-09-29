@@ -2,14 +2,18 @@ package cli
 
 import (
 	"context"
+	"image"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dnitros/pironman/internal/groupaccess"
 	"github.com/dnitros/pironman/internal/ipc"
+	"github.com/dnitros/pironman/internal/oled"
 	"github.com/dnitros/pironman/internal/rgb"
+	"github.com/dnitros/pironman/internal/sysstats"
 )
 
 type fakeServiceManager struct {
@@ -385,5 +389,51 @@ func TestServeDaemonRunsRemainingHooksWhenOneFails(t *testing.T) {
 	}
 	if !secondRan {
 		t.Fatalf("expected the second shutdown hook to run even though the first failed")
+	}
+}
+
+type fakeOLEDDisplay struct{}
+
+func (fakeOLEDDisplay) Draw(img *image.Gray) error { return nil }
+
+type fakeOLEDStatsSource struct{}
+
+func (fakeOLEDStatsSource) Snapshot() (sysstats.Snapshot, error) { return sysstats.Snapshot{}, nil }
+
+type fixedOLEDClock struct{ t time.Time }
+
+func (f fixedOLEDClock) Now() time.Time { return f.t }
+
+func TestShutdownDoesNotDeadlockWhenServeReturnsWithCtxStillLive(t *testing.T) {
+	srv := newTestIPCServer(t)
+
+	machine, err := oled.NewMachine(fakeOLEDDisplay{}, fakeOLEDStatsSource{}, fixedOLEDClock{t: time.Now()},
+		[]string{oled.PageMix}, 10*time.Second, 3*time.Second, true)
+	if err != nil {
+		t.Fatalf("oled.NewMachine: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	stopTicker := startOLEDTickLoop(ctx, machine)
+
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		srv.Close()
+	}()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- serveDaemon(ctx, srv, stopTicker)
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatalf("expected serveDaemon to propagate the Accept error triggered by closing the listener")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("serveDaemon deadlocked: the shutdown hook never returned")
 	}
 }
