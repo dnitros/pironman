@@ -135,3 +135,28 @@ func TestMixLinesFormatsCPUTempAndMem(t *testing.T) {
 		t.Fatalf("lines[3] = %q, want %q", lines[3], "RAM 33%")
 	}
 }
+
+func TestPerformanceLinesFormatsCPUMemAndTemp(t *testing.T) {
+	snap := sysstats.Snapshot{
+		CPUPercent:    12.4,
+		CPUTempC:      45.67,
+		MemPercent:    33.2,
+		MemUsedBytes:  1 << 30,
+		MemTotalBytes: 4 << 30,
+	}
+
+	lines := performanceLines(snap)
+
+	if lines[0] != "CPU 12%" {
+		t.Fatalf("lines[0] = %q, want %q", lines[0], "CPU 12%")
+	}
+	if lines[1] != "RAM 33%" {
+		t.Fatalf("lines[1] = %q, want %q", lines[1], "RAM 33%")
+	}
+	if lines[2] != "1.0/4.0GB" {
+		t.Fatalf("lines[2] = %q, want %q", lines[2], "1.0/4.0GB")
+	}
+	if lines[3] != "45.7C" {
+		t.Fatalf("lines[3] = %q, want %q", lines[3], "45.7C")
+	}
+}

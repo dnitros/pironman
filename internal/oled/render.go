@@ -63,6 +63,17 @@ func ipsLines(snap sysstats.Snapshot, scrollIdx int) []string {
 	return lines
 }
 
+const gigabyte = 1 << 30
+
+func performanceLines(snap sysstats.Snapshot) []string {
+	return []string{
+		fmt.Sprintf("CPU %.0f%%", snap.CPUPercent),
+		fmt.Sprintf("RAM %.0f%%", snap.MemPercent),
+		fmt.Sprintf("%.1f/%.1fGB", float64(snap.MemUsedBytes)/gigabyte, float64(snap.MemTotalBytes)/gigabyte),
+		fmt.Sprintf("%.1fC", snap.CPUTempC),
+	}
+}
+
 func renderLines(lines []string) *image.Gray {
 	img := image.NewGray(image.Rect(0, 0, hardware.SSD1306Width, hardware.SSD1306Height))
 	d := &font.Drawer{

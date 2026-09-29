@@ -195,6 +195,12 @@ func (m *Machine) pageLinesLocked() ([]string, error) {
 			return nil, fmt.Errorf("read stats: %w", err)
 		}
 		return mixLines(snap, m.scrollIdx), nil
+	case PagePerformance:
+		snap, err := m.stats.Snapshot()
+		if err != nil {
+			return nil, fmt.Errorf("read stats: %w", err)
+		}
+		return performanceLines(snap), nil
 	case PageIPs:
 		snap, err := m.stats.Snapshot()
 		if err != nil {
