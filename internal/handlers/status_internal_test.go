@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/dnitros/pironman/internal/ipc"
-	"github.com/dnitros/pironman/internal/oled"
 	"github.com/dnitros/pironman/internal/rgb"
 )
 
@@ -14,12 +13,8 @@ func TestStatusHandlerReportsCurrentState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStore: %v", err)
 	}
-	machine, _ := newTestMachine(t, true)
-	if err := machine.SetPage(oled.PageIPs); err != nil {
-		t.Fatalf("SetPage: %v", err)
-	}
 
-	path := startTestDaemon(t, map[string]ipc.Handler{"status": StatusHandler(store, machine)})
+	path := startTestDaemon(t, map[string]ipc.Handler{"status": StatusHandler(store)})
 
 	resp, err := ipc.Send(path, "status", nil)
 	if err != nil {
@@ -41,11 +36,5 @@ func TestStatusHandlerReportsCurrentState(t *testing.T) {
 	}
 	if data["brightness"] != float64(42) {
 		t.Fatalf("expected brightness=42, got %v", data["brightness"])
-	}
-	if data["oled_awake"] != true {
-		t.Fatalf("expected oled_awake=true, got %v", data["oled_awake"])
-	}
-	if data["oled_page"] != oled.PageIPs {
-		t.Fatalf("expected oled_page=%q, got %v", oled.PageIPs, data["oled_page"])
 	}
 }

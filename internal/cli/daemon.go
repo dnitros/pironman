@@ -294,7 +294,7 @@ func runDaemon(ctx context.Context) error {
 
 	path := ipc.SocketPath()
 
-	handlerMap := map[string]ipc.Handler{"ping": handlePing, "status": handlers.StatusHandler(rgbStore, oledMachine)}
+	handlerMap := map[string]ipc.Handler{"ping": handlePing, "status": handlers.StatusHandler(rgbStore)}
 	maps.Copy(handlerMap, handlers.RGBHandlers(rgbStore, &cfg, cfgPath))
 	maps.Copy(handlerMap, handlers.OLEDHandlers(oledMachine, &cfg, cfgPath))
 

@@ -11,10 +11,7 @@ import (
 func TestGatherStatusReturnsCurrentState(t *testing.T) {
 	path := startTestDaemon(t, map[string]ipc.Handler{
 		"status": func(args map[string]any) (any, error) {
-			return map[string]any{
-				"enabled": true, "color": "#00ff00", "brightness": 80,
-				"oled_awake": true, "oled_page": "mix",
-			}, nil
+			return map[string]any{"enabled": true, "color": "#00ff00", "brightness": 80}, nil
 		},
 	})
 
@@ -22,7 +19,7 @@ func TestGatherStatusReturnsCurrentState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("gatherStatus: %v", err)
 	}
-	want := StatusInfo{Enabled: true, Color: "#00ff00", Brightness: 80, OLEDAwake: true, OLEDPage: "mix"}
+	want := StatusInfo{Enabled: true, Color: "#00ff00", Brightness: 80}
 	if info != want {
 		t.Fatalf("gatherStatus() = %+v, want %+v", info, want)
 	}

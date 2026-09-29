@@ -63,7 +63,7 @@ func TestGatherDoctorReachableInstalledActive(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	mgr := &fakeServiceManager{installed: true, active: true}
 
-	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"))
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"))
 	if err != nil {
 		t.Fatalf("gatherDoctor: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestGatherDoctorUnreachableSocket(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	mgr := &fakeServiceManager{installed: false, active: false}
 
-	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"))
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"))
 	if err != nil {
 		t.Fatalf("expected gatherDoctor to degrade gracefully, got error: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestGatherDoctorReportsUnsupportedPlatformWithoutHardErroring(t *testing.T)
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	mgr := &fakeServiceManager{unsupported: true, isInstalledErr: errBoom, isActiveErr: errBoom}
 
-	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"))
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"))
 	if err != nil {
 		t.Fatalf("expected gatherDoctor to degrade gracefully on an unsupported platform, got: %v", err)
 	}
@@ -114,7 +114,7 @@ func TestGatherDoctorPropagatesIsInstalledError(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	mgr := &fakeServiceManager{isInstalledErr: errBoom}
 
-	if _, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1")); err == nil {
+	if _, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0")); err == nil {
 		t.Fatalf("expected an error when IsInstalled fails")
 	}
 }
@@ -124,7 +124,7 @@ func TestGatherDoctorPropagatesIsActiveError(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	mgr := &fakeServiceManager{installed: true, isActiveErr: errBoom}
 
-	if _, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1")); err == nil {
+	if _, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0")); err == nil {
 		t.Fatalf("expected an error when IsActive fails")
 	}
 }
@@ -136,7 +136,7 @@ func TestGatherDoctorReportsMissingConfigAsDefaulted(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	mgr := &fakeServiceManager{installed: true, active: true}
 
-	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"))
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"))
 	if err != nil {
 		t.Fatalf("gatherDoctor: %v", err)
 	}
@@ -153,7 +153,7 @@ func TestGatherDoctorReportsReadableConfig(t *testing.T) {
 	writeFile(t, cfgPath, "rgb:\n  enabled: true\n")
 	mgr := &fakeServiceManager{installed: true, active: true}
 
-	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"))
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"))
 	if err != nil {
 		t.Fatalf("gatherDoctor: %v", err)
 	}
@@ -170,7 +170,7 @@ func TestGatherDoctorReportsMalformedConfig(t *testing.T) {
 	writeFile(t, cfgPath, "not: [valid: yaml")
 	mgr := &fakeServiceManager{installed: true, active: true}
 
-	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"))
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"))
 	if err != nil {
 		t.Fatalf("gatherDoctor: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestGatherDoctorReportsSocketPermissions(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	mgr := &fakeServiceManager{installed: true, active: true}
 
-	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"))
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"))
 	if err != nil {
 		t.Fatalf("gatherDoctor: %v", err)
 	}
@@ -200,7 +200,7 @@ func TestGatherDoctorReportsMissingSocketGracefully(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	mgr := &fakeServiceManager{}
 
-	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"))
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"))
 	if err != nil {
 		t.Fatalf("expected gatherDoctor to degrade gracefully, got error: %v", err)
 	}
@@ -215,9 +215,8 @@ func TestGatherDoctorReportsSPIEnabled(t *testing.T) {
 	mgr := &fakeServiceManager{}
 	spiPath := filepath.Join(t.TempDir(), "spidev0.0")
 	writeFile(t, spiPath, "")
-	i2cPath := filepath.Join(t.TempDir(), "i2c-1")
 
-	info, err := gatherDoctor(path, mgr, cfgPath, spiPath, i2cPath)
+	info, err := gatherDoctor(path, mgr, cfgPath, spiPath)
 	if err != nil {
 		t.Fatalf("gatherDoctor: %v", err)
 	}
@@ -231,62 +230,12 @@ func TestGatherDoctorReportsSPIDisabled(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	mgr := &fakeServiceManager{}
 	spiPath := filepath.Join(t.TempDir(), "spidev0.0")
-	i2cPath := filepath.Join(t.TempDir(), "i2c-1")
 
-	info, err := gatherDoctor(path, mgr, cfgPath, spiPath, i2cPath)
+	info, err := gatherDoctor(path, mgr, cfgPath, spiPath)
 	if err != nil {
 		t.Fatalf("gatherDoctor: %v", err)
 	}
 	if info.SPIEnabled {
 		t.Fatalf("expected SPIEnabled to be false when %q is absent", spiPath)
-	}
-}
-
-func TestGatherDoctorReportsI2CEnabled(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "no-such-daemon.sock")
-	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
-	mgr := &fakeServiceManager{}
-	spiPath := filepath.Join(t.TempDir(), "spidev0.0")
-	i2cPath := filepath.Join(t.TempDir(), "i2c-1")
-	writeFile(t, i2cPath, "")
-
-	info, err := gatherDoctor(path, mgr, cfgPath, spiPath, i2cPath)
-	if err != nil {
-		t.Fatalf("gatherDoctor: %v", err)
-	}
-	if !info.I2CEnabled {
-		t.Fatalf("expected I2CEnabled to be true when %q exists", i2cPath)
-	}
-}
-
-func TestGatherDoctorReportsI2CDisabled(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "no-such-daemon.sock")
-	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
-	mgr := &fakeServiceManager{}
-	spiPath := filepath.Join(t.TempDir(), "spidev0.0")
-	i2cPath := filepath.Join(t.TempDir(), "i2c-1")
-
-	info, err := gatherDoctor(path, mgr, cfgPath, spiPath, i2cPath)
-	if err != nil {
-		t.Fatalf("gatherDoctor: %v", err)
-	}
-	if info.I2CEnabled {
-		t.Fatalf("expected I2CEnabled to be false when %q is absent", i2cPath)
-	}
-}
-
-func TestGatherDoctorReportsI2CToolsNotInstalled(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "no-such-daemon.sock")
-	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
-	mgr := &fakeServiceManager{}
-
-	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"))
-	if err != nil {
-		t.Fatalf("gatherDoctor: %v", err)
-	}
-	// This dev/CI environment does not have i2c-tools installed; a real Pi
-	// with i2c-tools installed would report true instead.
-	if info.I2CToolsInstalled {
-		t.Fatalf("expected I2CToolsInstalled to be false in this environment")
 	}
 }
