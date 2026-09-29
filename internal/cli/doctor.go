@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/user"
 	"strconv"
 	"syscall"
@@ -16,6 +17,7 @@ import (
 )
 
 const spiDevPath = "/dev/spidev0.0"
+const i2cDevPath = "/dev/i2c-1"
 
 type DoctorInfo struct {
 	PlatformSupported bool
@@ -28,6 +30,8 @@ type DoctorInfo struct {
 	ConfigPath        string
 	ConfigStatus      string
 	SPIEnabled        bool
+	I2CEnabled        bool
+	I2CToolsInstalled bool
 }
 
 func newDoctorCmd() *cobra.Command {
@@ -35,7 +39,7 @@ func newDoctorCmd() *cobra.Command {
 		Use:   "doctor",
 		Short: "Show daemon reachability, install/running state, socket permissions, and config readability",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			info, err := gatherDoctor(ipc.SocketPath(), systemdunit.NewManager(), config.Path(), spiDevPath)
+			info, err := gatherDoctor(ipc.SocketPath(), systemdunit.NewManager(), config.Path(), spiDevPath, i2cDevPath)
 			if err != nil {
 				return err
 			}
@@ -45,7 +49,7 @@ func newDoctorCmd() *cobra.Command {
 	}
 }
 
-func gatherDoctor(socketPath string, mgr systemdunit.Manager, cfgPath string, spiPath string) (DoctorInfo, error) {
+func gatherDoctor(socketPath string, mgr systemdunit.Manager, cfgPath string, spiPath string, i2cPath string) (DoctorInfo, error) {
 	supported := mgr.IsSupported()
 
 	var installed, active bool
@@ -74,12 +78,22 @@ func gatherDoctor(socketPath string, mgr systemdunit.Manager, cfgPath string, sp
 		SocketPermissions: describeSocketPermissions(socketPath),
 		ConfigPath:        cfgPath,
 		ConfigStatus:      describeConfigStatus(cfgPath),
-		SPIEnabled:        spiEnabled(spiPath),
+		SPIEnabled:        devicePathExists(spiPath),
+		I2CEnabled:        devicePathExists(i2cPath),
+		I2CToolsInstalled: commandInstalled("i2cdetect"),
 	}, nil
 }
 
-func spiEnabled(path string) bool {
+func devicePathExists(path string) bool {
 	_, err := os.Stat(path)
+	return err == nil
+}
+
+// commandInstalled is a convenience check only — pironman talks to the I2C
+// bus directly via periph.io, not through i2c-tools — useful for a human
+// debugging further.
+func commandInstalled(name string) bool {
+	_, err := exec.LookPath(name)
 	return err == nil
 }
 
@@ -146,4 +160,6 @@ func printDoctor(info DoctorInfo) {
 	fmt.Printf("config path: %s\n", info.ConfigPath)
 	fmt.Printf("config: %s\n", info.ConfigStatus)
 	fmt.Printf("SPI enabled: %t\n", info.SPIEnabled)
+	fmt.Printf("I2C enabled: %t\n", info.I2CEnabled)
+	fmt.Printf("i2c-tools installed: %t\n", info.I2CToolsInstalled)
 }
