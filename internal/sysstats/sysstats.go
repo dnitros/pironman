@@ -1,4 +1,3 @@
-// Package sysstats reads CPU, memory, and network stats for the OLED mix page.
 package sysstats
 
 import (
@@ -10,7 +9,6 @@ import (
 	"sync"
 )
 
-// Default paths for a Raspberry Pi's real /proc and /sys.
 const (
 	DefaultStatPath    = "/proc/stat"
 	DefaultThermalPath = "/sys/class/thermal/thermal_zone0/temp"
@@ -23,14 +21,13 @@ type Snapshot struct {
 	MemUsedBytes  uint64
 	MemTotalBytes uint64
 	MemPercent    float64
-	Interfaces    map[string]string // interface name -> IPv4 address
+	Interfaces    map[string]string
 }
 
 type Source interface {
 	Snapshot() (Snapshot, error)
 }
 
-// ProcSource reads stats from /proc, /sys, and Go's net package.
 type ProcSource struct {
 	statPath, thermalPath, meminfoPath string
 
@@ -107,8 +104,6 @@ func (s *ProcSource) Snapshot() (Snapshot, error) {
 	}, nil
 }
 
-// parseCPUStat parses /proc/stat's aggregate "cpu " line into an idle and a
-// total jiffy count. idle folds in iowait, matching top/htop's convention.
 func parseCPUStat(data []byte) (idle, total uint64, err error) {
 	for _, line := range strings.Split(string(data), "\n") {
 		fields := strings.Fields(line)
@@ -124,16 +119,15 @@ func parseCPUStat(data []byte) (idle, total uint64, err error) {
 			values = append(values, v)
 			total += v
 		}
-		idle = values[3] // idle
+		idle = values[3]
 		if len(values) > 4 {
-			idle += values[4] // iowait
+			idle += values[4]
 		}
 		return idle, total, nil
 	}
 	return 0, 0, fmt.Errorf("no aggregate \"cpu \" line found")
 }
 
-// parseMemInfo parses /proc/meminfo's MemTotal/MemAvailable lines (kB) into byte counts.
 func parseMemInfo(data []byte) (usedBytes, totalBytes uint64, err error) {
 	var total, available uint64
 	var haveTotal, haveAvailable bool
@@ -168,7 +162,6 @@ func parseMemInfo(data []byte) (usedBytes, totalBytes uint64, err error) {
 	return usedBytes, totalBytes, nil
 }
 
-// parseThermalTempC parses a /sys/class/thermal/*/temp file (millidegrees Celsius).
 func parseThermalTempC(data []byte) (float64, error) {
 	milliC, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
 	if err != nil {
@@ -182,7 +175,6 @@ type netIface struct {
 	IP   string
 }
 
-// listInterfaces is a package-level var so tests can stub it out.
 var listInterfaces = defaultListInterfaces
 
 func defaultListInterfaces() ([]netIface, error) {

@@ -255,8 +255,6 @@ func newOLEDMachine(cfg config.Config) (*oled.Machine, error) {
 		cfg.OLED.Enabled)
 }
 
-// runOLEDTicker drives the OLED state machine's 1-second refresh until ctx is
-// canceled, then closes done so shutdown can wait for it before blanking.
 func runOLEDTicker(ctx context.Context, machine *oled.Machine, done chan<- struct{}) {
 	defer close(done)
 
@@ -275,11 +273,6 @@ func runOLEDTicker(ctx context.Context, machine *oled.Machine, done chan<- struc
 	}
 }
 
-// startOLEDTickLoop starts the tick loop under its own cancellable context,
-// independent of ctx: Serve can return with ctx still live (e.g. a
-// non-cancellation Accept error), and the returned shutdown hook must still
-// be able to stop the tick loop itself before the caller blanks the display,
-// rather than depending on ctx already being Done.
 func startOLEDTickLoop(ctx context.Context, machine *oled.Machine) (shutdown func() error) {
 	tickCtx, cancelTick := context.WithCancel(ctx)
 	tickerDone := make(chan struct{})
@@ -311,8 +304,6 @@ func runDaemon(ctx context.Context) error {
 
 	path := ipc.SocketPath()
 
-	// cfgMu is shared across every handler group, since they all
-	// read-modify-write the same *config.Config.
 	var cfgMu sync.Mutex
 	handlerMap := map[string]ipc.Handler{"ping": handlePing, "status": handlers.StatusHandler(rgbStore)}
 	maps.Copy(handlerMap, handlers.RGBHandlers(rgbStore, &cfg, cfgPath, &cfgMu))
@@ -327,13 +318,11 @@ func runDaemon(ctx context.Context) error {
 	defer stop()
 
 	stopOLEDTicker := startOLEDTickLoop(ctx, oledMachine)
-	// stopOLEDTicker is idempotent, so this guarantees the tick loop stops on
-	// any return path even if one bypasses the shutdown hook below.
 	defer stopOLEDTicker()
 
 	fmt.Printf("pironman daemon listening on %s\n", path)
 	return serveDaemon(ctx, srv,
-		stopOLEDTicker, // stop the tick loop before blanking
+		stopOLEDTicker,
 		func() error { return oledMachine.Off() },
 		func() error {
 			_, err := rgbStore.Off()

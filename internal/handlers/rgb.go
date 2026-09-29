@@ -10,9 +10,6 @@ import (
 	"github.com/dnitros/pironman/internal/rgb"
 )
 
-// RGBHandlers registers the rgb.* IPC handlers. cfgMu must be the same mutex
-// passed to every other handler group sharing cfg, since they all
-// read-modify-write the same *config.Config.
 func RGBHandlers(store *rgb.Store, cfg *config.Config, cfgPath string, cfgMu *sync.Mutex) map[string]ipc.Handler {
 	return map[string]ipc.Handler{
 		"rgb.on":         rgbSetHandler(store, cfg, cfgPath, cfgMu, true),

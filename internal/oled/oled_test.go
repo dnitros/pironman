@@ -153,9 +153,6 @@ func TestAdvanceResetsScrollTimerOnWake(t *testing.T) {
 		t.Fatalf("NewMachine: %v", err)
 	}
 
-	// Asleep for a long time before waking: if the scroll timer weren't reset
-	// on wake, this stale elapsed time would immediately roll the content
-	// over on the very next tick.
 	clock.Advance(time.Hour)
 	if err := m.Advance(); err != nil {
 		t.Fatalf("Advance: %v", err)
@@ -350,7 +347,7 @@ func TestActivityResetsSleepTimeoutWindow(t *testing.T) {
 	}
 
 	clock.Advance(9 * time.Second)
-	if err := m.Advance(); err != nil { // page-change activity, resets the idle window
+	if err := m.Advance(); err != nil {
 		t.Fatalf("Advance: %v", err)
 	}
 	clock.Advance(9 * time.Second)
@@ -383,7 +380,7 @@ func TestTickScrollsMixPageContentOnlyAfterScrollInterval(t *testing.T) {
 		t.Fatalf("expected content to stay the same before the scroll interval elapses")
 	}
 
-	clock.Advance(2 * time.Second) // total 3s elapsed
+	clock.Advance(2 * time.Second)
 	if err := m.Tick(); err != nil {
 		t.Fatalf("Tick: %v", err)
 	}

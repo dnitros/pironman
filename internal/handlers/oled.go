@@ -9,9 +9,6 @@ import (
 	"github.com/dnitros/pironman/internal/oled"
 )
 
-// OLEDHandlers registers the oled.* IPC handlers. cfgMu must be the same
-// mutex passed to every other handler group sharing cfg, since they all
-// read-modify-write the same *config.Config.
 func OLEDHandlers(machine *oled.Machine, cfg *config.Config, cfgPath string, cfgMu *sync.Mutex) map[string]ipc.Handler {
 	return map[string]ipc.Handler{
 		"oled.on":   oledSetHandler(machine, cfg, cfgPath, cfgMu, true),

@@ -404,15 +404,6 @@ type fixedOLEDClock struct{ t time.Time }
 
 func (f fixedOLEDClock) Now() time.Time { return f.t }
 
-// TestShutdownDoesNotDeadlockWhenServeReturnsWithCtxStillLive guards the
-// exact runDaemon wiring (startOLEDTickLoop): Serve can return via a
-// non-cancellation Accept error while the outer ctx is still live
-// (internal/ipc/server.go's Accept error path only checks ctx.Done() to
-// decide whether to return nil or the raw error). A shutdown hook that waits
-// on a ticker goroutine tied only to that same outer ctx would then block
-// forever, since nothing ever cancels it. The fix is startOLEDTickLoop's
-// independently cancellable child context, canceled by its returned hook
-// itself rather than relied upon to already be done.
 func TestShutdownDoesNotDeadlockWhenServeReturnsWithCtxStillLive(t *testing.T) {
 	srv := newTestIPCServer(t)
 
@@ -423,12 +414,10 @@ func TestShutdownDoesNotDeadlockWhenServeReturnsWithCtxStillLive(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel() // never canceled during the test — Serve must return without it
+	defer cancel()
 
 	stopTicker := startOLEDTickLoop(ctx, machine)
 
-	// Force Serve's Accept loop to fail via a non-cancellation error: closing
-	// the listener out from under a blocked Accept, with ctx left live.
 	go func() {
 		time.Sleep(20 * time.Millisecond)
 		srv.Close()

@@ -7,7 +7,6 @@ import (
 )
 
 func TestParseCPUStatComputesIdleAndTotal(t *testing.T) {
-	// user nice system idle iowait irq softirq steal guest guest_nice
 	data := []byte("cpu  100 0 50 800 20 0 0 0 0 0\nignored line\n")
 
 	idle, total, err := parseCPUStat(data)
@@ -107,7 +106,7 @@ func TestProcSourceSnapshotReportsMemAndTempAndInterfaces(t *testing.T) {
 	if snap.Interfaces["eth0"] != "192.168.1.5" {
 		t.Fatalf("Interfaces[eth0] = %q, want 192.168.1.5", snap.Interfaces["eth0"])
 	}
-	// First sample has no prior CPU reading to diff against.
+
 	if snap.CPUPercent != 0 {
 		t.Fatalf("CPUPercent on first sample = %v, want 0", snap.CPUPercent)
 	}
@@ -130,7 +129,6 @@ func TestProcSourceSnapshotComputesCPUPercentFromDelta(t *testing.T) {
 		t.Fatalf("first Snapshot: %v", err)
 	}
 
-	// total advances by 100 (all in the non-idle "user" bucket), idle unchanged.
 	writeFixture(t, dir, "stat", "cpu  200 0 50 800 20 0 0 0 0 0\n")
 	snap, err := src.Snapshot()
 	if err != nil {

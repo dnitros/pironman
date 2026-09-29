@@ -14,11 +14,8 @@ import (
 	"github.com/dnitros/pironman/internal/sysstats"
 )
 
-const textLineHeight = 13 // basicfont.Face7x13's line height
+const textLineHeight = 13
 
-// mixLines builds the mix page's four display lines: the interface at
-// scrollIdx (cycling through interfaces in sorted name order, "disconnected"
-// when there are none), CPU usage, CPU temperature, and RAM usage.
 func mixLines(snap sysstats.Snapshot, scrollIdx int) []string {
 	ipLine := "disconnected"
 	if len(snap.Interfaces) > 0 {
@@ -39,7 +36,6 @@ func mixLines(snap sysstats.Snapshot, scrollIdx int) []string {
 	}
 }
 
-// renderLines blits lines onto a fresh SSD1306-sized canvas, one per row.
 func renderLines(lines []string) *image.Gray {
 	img := image.NewGray(image.Rect(0, 0, hardware.SSD1306Width, hardware.SSD1306Height))
 	d := &font.Drawer{
@@ -54,9 +50,6 @@ func renderLines(lines []string) *image.Gray {
 	return img
 }
 
-// fitLine truncates s (from the end) until it measures within the SSD1306's
-// pixel width at Face7x13 — e.g. "wlan0 192.168.1.100" is a character wider
-// than the display.
 func fitLine(s string) string {
 	maxWidth := fixed.I(hardware.SSD1306Width)
 	for len(s) > 0 && font.MeasureString(basicfont.Face7x13, s) > maxWidth {

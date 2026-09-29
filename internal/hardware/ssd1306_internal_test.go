@@ -27,7 +27,7 @@ func TestPackSSD1306FrameAllBlackIsAllZero(t *testing.T) {
 
 func TestPackSSD1306FrameSetsBitForLitPixel(t *testing.T) {
 	img := image.NewGray(image.Rect(0, 0, SSD1306Width, SSD1306Height))
-	// Pixel (x=3, y=9) sits in page 1 (y/8), bit 1 (y%8).
+
 	img.SetGray(3, 9, color.Gray{Y: 255})
 
 	got := packSSD1306Frame(img)

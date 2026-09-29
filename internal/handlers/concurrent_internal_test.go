@@ -12,11 +12,6 @@ import (
 	"github.com/dnitros/pironman/internal/rgb"
 )
 
-// TestRGBAndOLEDHandlersShareConfigMutexUnderConcurrentLoad guards against
-// RGBHandlers and OLEDHandlers each locking a private mutex around the same
-// *config.Config: without one shared lock, concurrent rgb.* and oled.*
-// requests race on *cfg (a real data race, since Config embeds a slice) and
-// can lose one handler's persisted write to the other's.
 func TestRGBAndOLEDHandlersShareConfigMutexUnderConcurrentLoad(t *testing.T) {
 	strip := &fakeStrip{}
 	rgbStore, err := rgb.NewStore(strip, rgb.State{Enabled: false})
@@ -29,9 +24,7 @@ func TestRGBAndOLEDHandlersShareConfigMutexUnderConcurrentLoad(t *testing.T) {
 	cfg.RGB.Enabled = false
 	cfg.OLED.Enabled = false
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
-	// Pre-write the false starting state: config.Load falls back to
-	// config.Default() (both fields true) for a missing file, which would
-	// make the assertions below pass even if every send silently failed.
+
 	if err := cfg.Save(cfgPath); err != nil {
 		t.Fatalf("Save: %v", err)
 	}

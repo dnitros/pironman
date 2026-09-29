@@ -1,5 +1,3 @@
-// Package oled drives the OLED page state machine: awake/asleep, the current
-// page, and per-page content-scroll position.
 package oled
 
 import (
@@ -19,13 +17,10 @@ const (
 	PageDisk        = "disk"
 )
 
-// Clock abstracts time.Now so tests can drive the sleep-timeout and
-// content-scroll timers without a real wall-clock wait.
 type Clock interface {
 	Now() time.Time
 }
 
-// RealClock is the production Clock, backed by the wall clock.
 type RealClock struct{}
 
 func (RealClock) Now() time.Time { return time.Now() }
@@ -54,8 +49,6 @@ type Machine struct {
 	scrollIdx    int
 }
 
-// NewMachine builds the state machine and applies initialAwake once,
-// mirroring rgb.NewStore's apply-on-construct pattern.
 func NewMachine(display hardware.SSD1306Display, stats sysstats.Source, clock Clock, pages []string, sleepTimeout, scrollInterval time.Duration, initialAwake bool) (*Machine, error) {
 	if len(pages) == 0 {
 		return nil, fmt.Errorf("oled: page order must not be empty")
@@ -85,12 +78,10 @@ func (m *Machine) State() State {
 	return State{Awake: m.awake, Page: m.pages[m.pageIdx]}
 }
 
-// On wakes the display and jumps straight to the mix page.
 func (m *Machine) On() error {
 	return m.SetPage(PageMix)
 }
 
-// Off blanks the display.
 func (m *Machine) Off() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -99,8 +90,6 @@ func (m *Machine) Off() error {
 	return m.renderLocked()
 }
 
-// Advance wakes the display if asleep, or moves to the next page if already
-// awake — never both in the same call.
 func (m *Machine) Advance() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -118,8 +107,6 @@ func (m *Machine) Advance() error {
 	return m.renderLocked()
 }
 
-// Previous moves to the previous page, but only while already awake; it is a
-// no-op while asleep.
 func (m *Machine) Previous() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -134,8 +121,6 @@ func (m *Machine) Previous() error {
 	return m.renderLocked()
 }
 
-// SetPage always wakes the display and jumps directly to name, regardless of
-// current state.
 func (m *Machine) SetPage(name string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -152,8 +137,6 @@ func (m *Machine) SetPage(name string) error {
 	return m.renderLocked()
 }
 
-// Tick drives the 1-second refresh, content-scroll, and sleep-timeout. It is
-// a no-op while asleep.
 func (m *Machine) Tick() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

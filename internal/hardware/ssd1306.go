@@ -19,41 +19,34 @@ const (
 	ssd1306Pages  = SSD1306Height / 8
 )
 
-// grayLitThreshold is the Y value above which a packed pixel counts as lit.
 const grayLitThreshold = 128
 
 type SSD1306Display interface {
-	// Draw renders img (must be SSD1306Width x SSD1306Height) to the display.
 	Draw(img *image.Gray) error
 }
 
-// ssd1306InitCommands brings the panel up in 128x64, horizontal-addressing
-// mode, matching the standard SSD1306 datasheet init sequence.
 var ssd1306InitCommands = []byte{
-	0xAE,       // display off
-	0xD5, 0x80, // set display clock divide ratio/oscillator frequency
-	0xA8, 0x3F, // set multiplex ratio (64-1)
-	0xD3, 0x00, // set display offset = 0
-	0x40,       // set display start line = 0
-	0x8D, 0x14, // charge pump enable
-	0x20, 0x00, // memory addressing mode = horizontal
-	0xA1,       // segment remap
-	0xC8,       // COM output scan direction, remapped
-	0xDA, 0x12, // set COM pins hardware configuration
-	0x81, 0xCF, // set contrast
-	0xD9, 0xF1, // set pre-charge period
-	0xDB, 0x40, // set VCOMH deselect level
-	0xA4, // resume display from RAM content
-	0xA6, // normal (non-inverted) display
-	0xAF, // display on
+	0xAE,
+	0xD5, 0x80,
+	0xA8, 0x3F,
+	0xD3, 0x00,
+	0x40,
+	0x8D, 0x14,
+	0x20, 0x00,
+	0xA1,
+	0xC8,
+	0xDA, 0x12,
+	0x81, 0xCF,
+	0xD9, 0xF1,
+	0xDB, 0x40,
+	0xA4,
+	0xA6,
+	0xAF,
 }
 
-// ssd1306AddressRange resets the column/page cursor to the top-left corner
-// before each frame write, since horizontal addressing auto-increments across
-// the whole range once set.
 var ssd1306AddressRange = []byte{
-	0x21, 0x00, SSD1306Width - 1, // set column address 0..127
-	0x22, 0x00, ssd1306Pages - 1, // set page address 0..7
+	0x21, 0x00, SSD1306Width - 1,
+	0x22, 0x00, ssd1306Pages - 1,
 }
 
 type I2CSSD1306 struct {
@@ -78,7 +71,7 @@ func NewI2CSSD1306(port string) (*I2CSSD1306, error) {
 
 func (d *I2CSSD1306) writeCommands(cmds []byte) error {
 	buf := make([]byte, 0, len(cmds)+1)
-	buf = append(buf, 0x00) // control byte: command stream
+	buf = append(buf, 0x00)
 	buf = append(buf, cmds...)
 	if err := d.dev.Tx(buf, nil); err != nil {
 		return fmt.Errorf("write command: %w", err)
@@ -98,7 +91,7 @@ func (d *I2CSSD1306) Draw(img *image.Gray) error {
 
 	frame := packSSD1306Frame(img)
 	buf := make([]byte, 0, len(frame)+1)
-	buf = append(buf, 0x40) // control byte: data stream
+	buf = append(buf, 0x40)
 	buf = append(buf, frame...)
 	if err := d.dev.Tx(buf, nil); err != nil {
 		return fmt.Errorf("write frame: %w", err)
@@ -106,9 +99,6 @@ func (d *I2CSSD1306) Draw(img *image.Gray) error {
 	return nil
 }
 
-// packSSD1306Frame converts a 128x64 grayscale image into the SSD1306's
-// page-addressed byte layout: each byte covers 8 vertically-stacked pixels
-// in one column, LSB = topmost row of the page.
 func packSSD1306Frame(img *image.Gray) []byte {
 	frame := make([]byte, SSD1306Width*ssd1306Pages)
 	b := img.Bounds()

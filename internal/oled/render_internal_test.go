@@ -55,7 +55,6 @@ func TestFitLineLeavesShortLinesUnchanged(t *testing.T) {
 }
 
 func TestFitLineTruncatesToFitDisplayWidth(t *testing.T) {
-	// This exact string measures wider than the 128px display at Face7x13.
 	long := "wlan0 192.168.1.100"
 	if font.MeasureString(basicfont.Face7x13, long) <= fixed.I(hardware.SSD1306Width) {
 		t.Fatalf("test fixture %q must be wider than the display to be meaningful", long)
