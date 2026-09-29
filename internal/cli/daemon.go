@@ -248,7 +248,7 @@ func newOLEDMachine(cfg config.Config) (*oled.Machine, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open SSD1306 display: %w", err)
 	}
-	stats := sysstats.NewProcSource(sysstats.DefaultStatPath, sysstats.DefaultThermalPath, sysstats.DefaultMemInfoPath)
+	stats := sysstats.NewProcSource(sysstats.DefaultStatPath, sysstats.DefaultThermalPath, sysstats.DefaultMemInfoPath, sysstats.DefaultMountsPath)
 	return oled.NewMachine(display, stats, oled.RealClock{}, cfg.OLED.PageOrder,
 		time.Duration(cfg.OLED.SleepTimeoutSeconds)*time.Second,
 		time.Duration(cfg.OLED.ScrollIntervalSeconds)*time.Second,

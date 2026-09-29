@@ -36,6 +36,30 @@ func mixLines(snap sysstats.Snapshot, scrollIdx int) []string {
 	}
 }
 
+func diskLines(snap sysstats.Snapshot, scrollIdx int) []string {
+	if len(snap.Disks) == 0 {
+		return []string{"no disks found"}
+	}
+
+	const groupSize = 3
+	groups := (len(snap.Disks) + groupSize - 1) / groupSize
+	start := (scrollIdx % groups) * groupSize
+	end := start + groupSize
+	if end > len(snap.Disks) {
+		end = len(snap.Disks)
+	}
+
+	lines := make([]string, 0, end-start)
+	for _, d := range snap.Disks[start:end] {
+		lines = append(lines, fmt.Sprintf("%s %.0fG/%.0fG %.0f%%", d.Type, gib(d.UsedBytes), gib(d.TotalBytes), d.Percent))
+	}
+	return lines
+}
+
+func gib(bytes uint64) float64 {
+	return float64(bytes) / (1 << 30)
+}
+
 func renderLines(lines []string) *image.Gray {
 	img := image.NewGray(image.Rect(0, 0, hardware.SSD1306Width, hardware.SSD1306Height))
 	d := &font.Drawer{

@@ -48,6 +48,55 @@ func TestMixLinesCyclesInterfacesByScrollIndexInSortedOrder(t *testing.T) {
 	}
 }
 
+func TestDiskLinesShowsDetectionErrorWhenNoDisksFound(t *testing.T) {
+	lines := diskLines(sysstats.Snapshot{}, 0)
+
+	if len(lines) != 1 || lines[0] != "no disks found" {
+		t.Fatalf("lines = %+v, want a single detection-error line", lines)
+	}
+}
+
+func TestDiskLinesShowsAllDisksWhenThreeOrFewer(t *testing.T) {
+	snap := sysstats.Snapshot{Disks: []sysstats.Disk{
+		{Type: "sd", UsedBytes: 12 << 30, TotalBytes: 32 << 30, Percent: 37.5},
+		{Type: "usb", UsedBytes: 1 << 30, TotalBytes: 2 << 30, Percent: 50},
+	}}
+
+	lines := diskLines(snap, 0)
+
+	want := []string{"sd 12G/32G 38%", "usb 1G/2G 50%"}
+	if len(lines) != len(want) {
+		t.Fatalf("lines = %+v, want %+v", lines, want)
+	}
+	for i := range want {
+		if lines[i] != want[i] {
+			t.Fatalf("lines[%d] = %q, want %q", i, lines[i], want[i])
+		}
+	}
+}
+
+func TestDiskLinesWindowsIntoGroupsOfThreeAndScrolls(t *testing.T) {
+	disk := func(t string) sysstats.Disk { return sysstats.Disk{Type: t, TotalBytes: 1} }
+	snap := sysstats.Snapshot{Disks: []sysstats.Disk{
+		disk("a"), disk("b"), disk("c"), disk("d"),
+	}}
+
+	first := diskLines(snap, 0)
+	if len(first) != 3 || first[0][:1] != "a" || first[2][:1] != "c" {
+		t.Fatalf("first group = %+v, want disks a-c", first)
+	}
+
+	second := diskLines(snap, 1)
+	if len(second) != 1 || second[0][:1] != "d" {
+		t.Fatalf("second group = %+v, want just disk d", second)
+	}
+
+	wrapped := diskLines(snap, 2)
+	if len(wrapped) != 3 || wrapped[0][:1] != "a" {
+		t.Fatalf("scrollIdx=2 = %+v, want wraparound back to the first group", wrapped)
+	}
+}
+
 func TestFitLineLeavesShortLinesUnchanged(t *testing.T) {
 	if got := fitLine("CPU 12%"); got != "CPU 12%" {
 		t.Fatalf("fitLine(%q) = %q, want unchanged", "CPU 12%", got)

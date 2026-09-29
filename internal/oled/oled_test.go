@@ -413,6 +413,44 @@ func TestAwakeStatePersistsAcrossSimulatedRestart(t *testing.T) {
 	}
 }
 
+func TestSetPageDiskReadsStatsAndRendersDiskContent(t *testing.T) {
+	display := &fakeDisplay{}
+	stats := &fakeStats{snap: sysstats.Snapshot{Disks: []sysstats.Disk{
+		{Type: "sd", UsedBytes: 12 << 30, TotalBytes: 32 << 30, Percent: 37.5},
+	}}}
+	m, err := oled.NewMachine(display, stats, newFakeClock(), defaultPages(), 10*time.Second, 3*time.Second, false)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+	callsBefore := stats.calls
+
+	if err := m.SetPage(oled.PageDisk); err != nil {
+		t.Fatalf("SetPage: %v", err)
+	}
+	if stats.calls != callsBefore+1 {
+		t.Fatalf("expected the disk page to read stats, calls = %d, want %d", stats.calls, callsBefore+1)
+	}
+	if allZero(display.lastFrame()) {
+		t.Fatalf("expected the disk page to render non-blank disk content")
+	}
+}
+
+func TestSetPageStillComingSoonDoesNotReadStats(t *testing.T) {
+	display := &fakeDisplay{}
+	stats := &fakeStats{err: errBoom}
+	m, err := oled.NewMachine(display, stats, newFakeClock(), defaultPages(), 10*time.Second, 3*time.Second, false)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+
+	if err := m.SetPage(oled.PagePerformance); err != nil {
+		t.Fatalf("SetPage(%q) should not fail even though stats errors: %v", oled.PagePerformance, err)
+	}
+	if stats.calls != 0 {
+		t.Fatalf("expected the still-unbuilt performance page not to read stats, calls = %d", stats.calls)
+	}
+}
+
 func TestTickPropagatesStatsError(t *testing.T) {
 	display := &fakeDisplay{}
 	stats := &fakeStats{err: errBoom}
