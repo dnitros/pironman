@@ -327,6 +327,9 @@ func runDaemon(ctx context.Context) error {
 	defer stop()
 
 	stopOLEDTicker := startOLEDTickLoop(ctx, oledMachine)
+	// stopOLEDTicker is idempotent, so this guarantees the tick loop stops on
+	// any return path even if one bypasses the shutdown hook below.
+	defer stopOLEDTicker()
 
 	fmt.Printf("pironman daemon listening on %s\n", path)
 	return serveDaemon(ctx, srv,
