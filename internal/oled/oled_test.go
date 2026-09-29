@@ -413,6 +413,55 @@ func TestAwakeStatePersistsAcrossSimulatedRestart(t *testing.T) {
 	}
 }
 
+func TestSetPagePerformanceFetchesAndRendersStats(t *testing.T) {
+	display := &fakeDisplay{}
+	stats := &fakeStats{snap: sysstats.Snapshot{CPUPercent: 12, MemPercent: 33, CPUTempC: 45.6}}
+	m, err := oled.NewMachine(display, stats, newFakeClock(), defaultPages(), 10*time.Second, 3*time.Second, false)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+	callsBefore := stats.calls
+
+	if err := m.SetPage(oled.PagePerformance); err != nil {
+		t.Fatalf("SetPage: %v", err)
+	}
+	if stats.calls != callsBefore+1 {
+		t.Fatalf("expected the performance page to fetch a stats snapshot, calls = %d, want %d", stats.calls, callsBefore+1)
+	}
+	if state := m.State(); !state.Awake || state.Page != oled.PagePerformance {
+		t.Fatalf("State() = %+v, want awake on %q", state, oled.PagePerformance)
+	}
+}
+
+func TestSetPageStubPageRendersEvenWhenStatsErrors(t *testing.T) {
+	display := &fakeDisplay{}
+	stats := &fakeStats{err: errBoom}
+	m, err := oled.NewMachine(display, stats, newFakeClock(), defaultPages(), 10*time.Second, 3*time.Second, false)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+
+	if err := m.SetPage(oled.PageIPs); err != nil {
+		t.Fatalf("expected the stub ips page to render without touching stats, got: %v", err)
+	}
+	if state := m.State(); !state.Awake || state.Page != oled.PageIPs {
+		t.Fatalf("State() = %+v, want awake on %q", state, oled.PageIPs)
+	}
+}
+
+func TestSetPagePerformancePropagatesStatsError(t *testing.T) {
+	display := &fakeDisplay{}
+	stats := &fakeStats{err: errBoom}
+	m, err := oled.NewMachine(display, stats, newFakeClock(), defaultPages(), 10*time.Second, 3*time.Second, false)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+
+	if err := m.SetPage(oled.PagePerformance); err == nil {
+		t.Fatalf("expected SetPage(performance) to propagate the stats error")
+	}
+}
+
 func TestTickPropagatesStatsError(t *testing.T) {
 	display := &fakeDisplay{}
 	stats := &fakeStats{err: errBoom}

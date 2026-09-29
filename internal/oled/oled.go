@@ -187,13 +187,21 @@ func (m *Machine) renderLocked() error {
 
 func (m *Machine) pageLinesLocked() ([]string, error) {
 	page := m.pages[m.pageIdx]
-	if page != PageMix {
+
+	switch page {
+	case PageMix:
+		snap, err := m.stats.Snapshot()
+		if err != nil {
+			return nil, fmt.Errorf("read stats: %w", err)
+		}
+		return mixLines(snap, m.scrollIdx), nil
+	case PagePerformance:
+		snap, err := m.stats.Snapshot()
+		if err != nil {
+			return nil, fmt.Errorf("read stats: %w", err)
+		}
+		return performanceLines(snap), nil
+	default:
 		return []string{page, "(coming soon)"}, nil
 	}
-
-	snap, err := m.stats.Snapshot()
-	if err != nil {
-		return nil, fmt.Errorf("read stats: %w", err)
-	}
-	return mixLines(snap, m.scrollIdx), nil
 }
