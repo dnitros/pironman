@@ -71,6 +71,44 @@ func formatDiskSize(usedBytes, totalBytes uint64) string {
 	return fmt.Sprintf("%.1f/%.1f%s", scaledUsed, scaledTotal, units[unit])
 }
 
+const ipsPerPage = 3
+
+func ipsLines(snap sysstats.Snapshot, scrollIdx int) []string {
+	if len(snap.Interfaces) == 0 {
+		return []string{"disconnected"}
+	}
+
+	names := make([]string, 0, len(snap.Interfaces))
+	for name := range snap.Interfaces {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	groups := (len(names) + ipsPerPage - 1) / ipsPerPage
+	start := (scrollIdx % groups) * ipsPerPage
+	end := start + ipsPerPage
+	if end > len(names) {
+		end = len(names)
+	}
+
+	lines := make([]string, 0, end-start)
+	for _, name := range names[start:end] {
+		lines = append(lines, fmt.Sprintf("%s %s", name, snap.Interfaces[name]))
+	}
+	return lines
+}
+
+const gigabyte = 1 << 30
+
+func performanceLines(snap sysstats.Snapshot) []string {
+	return []string{
+		fmt.Sprintf("CPU %.0f%%", snap.CPUPercent),
+		fmt.Sprintf("RAM %.0f%%", snap.MemPercent),
+		fmt.Sprintf("%.1f/%.1fGB", float64(snap.MemUsedBytes)/gigabyte, float64(snap.MemTotalBytes)/gigabyte),
+		fmt.Sprintf("%.1fC", snap.CPUTempC),
+	}
+}
+
 func renderLines(lines []string) *image.Gray {
 	img := image.NewGray(image.Rect(0, 0, hardware.SSD1306Width, hardware.SSD1306Height))
 	d := &font.Drawer{

@@ -389,6 +389,41 @@ func TestTickScrollsMixPageContentOnlyAfterScrollInterval(t *testing.T) {
 	}
 }
 
+func TestTickScrollsIPsPageToNextGroupOfThreeAfterScrollInterval(t *testing.T) {
+	display := &fakeDisplay{}
+	stats := &fakeStats{snap: sysstats.Snapshot{Interfaces: map[string]string{
+		"eth0":  "192.168.1.5",
+		"eth1":  "192.168.1.6",
+		"lo":    "127.0.0.1",
+		"wlan0": "10.0.0.2",
+	}}}
+	clock := newFakeClock()
+	m, err := oled.NewMachine(display, stats, clock, defaultPages(), 10*time.Second, 3*time.Second, true)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+	if err := m.SetPage(oled.PageIPs); err != nil {
+		t.Fatalf("SetPage: %v", err)
+	}
+	initial := display.lastFrame()
+
+	clock.Advance(1 * time.Second)
+	if err := m.Tick(); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+	if !bytes.Equal(display.lastFrame(), initial) {
+		t.Fatalf("expected content to stay the same before the scroll interval elapses")
+	}
+
+	clock.Advance(2 * time.Second)
+	if err := m.Tick(); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+	if bytes.Equal(display.lastFrame(), initial) {
+		t.Fatalf("expected content to scroll to the next group of three once the scroll interval elapses")
+	}
+}
+
 func TestAwakeStatePersistsAcrossSimulatedRestart(t *testing.T) {
 	display := &fakeDisplay{}
 	m, err := oled.NewMachine(display, &fakeStats{}, newFakeClock(), defaultPages(), 10*time.Second, 3*time.Second, true)
@@ -435,7 +470,27 @@ func TestSetPageDiskReadsStatsAndRendersDiskContent(t *testing.T) {
 	}
 }
 
-func TestSetPageStillComingSoonDoesNotReadStats(t *testing.T) {
+func TestSetPagePerformanceFetchesAndRendersStats(t *testing.T) {
+	display := &fakeDisplay{}
+	stats := &fakeStats{snap: sysstats.Snapshot{CPUPercent: 12, MemPercent: 33, CPUTempC: 45.6}}
+	m, err := oled.NewMachine(display, stats, newFakeClock(), defaultPages(), 10*time.Second, 3*time.Second, false)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+	callsBefore := stats.calls
+
+	if err := m.SetPage(oled.PagePerformance); err != nil {
+		t.Fatalf("SetPage: %v", err)
+	}
+	if stats.calls != callsBefore+1 {
+		t.Fatalf("expected the performance page to fetch a stats snapshot, calls = %d, want %d", stats.calls, callsBefore+1)
+	}
+	if state := m.State(); !state.Awake || state.Page != oled.PagePerformance {
+		t.Fatalf("State() = %+v, want awake on %q", state, oled.PagePerformance)
+	}
+}
+
+func TestSetPageDiskPropagatesStatsError(t *testing.T) {
 	display := &fakeDisplay{}
 	stats := &fakeStats{err: errBoom}
 	m, err := oled.NewMachine(display, stats, newFakeClock(), defaultPages(), 10*time.Second, 3*time.Second, false)
@@ -443,11 +498,21 @@ func TestSetPageStillComingSoonDoesNotReadStats(t *testing.T) {
 		t.Fatalf("NewMachine: %v", err)
 	}
 
-	if err := m.SetPage(oled.PagePerformance); err != nil {
-		t.Fatalf("SetPage(%q) should not fail even though stats errors: %v", oled.PagePerformance, err)
+	if err := m.SetPage(oled.PageDisk); err == nil {
+		t.Fatalf("expected SetPage(disk) to propagate the stats error")
 	}
-	if stats.calls != 0 {
-		t.Fatalf("expected the still-unbuilt performance page not to read stats, calls = %d", stats.calls)
+}
+
+func TestSetPagePerformancePropagatesStatsError(t *testing.T) {
+	display := &fakeDisplay{}
+	stats := &fakeStats{err: errBoom}
+	m, err := oled.NewMachine(display, stats, newFakeClock(), defaultPages(), 10*time.Second, 3*time.Second, false)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+
+	if err := m.SetPage(oled.PagePerformance); err == nil {
+		t.Fatalf("expected SetPage(performance) to propagate the stats error")
 	}
 }
 
