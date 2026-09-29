@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dnitros/pironman/internal/groupaccess"
 	"github.com/dnitros/pironman/internal/ipc"
@@ -385,5 +386,57 @@ func TestServeDaemonRunsRemainingHooksWhenOneFails(t *testing.T) {
 	}
 	if !secondRan {
 		t.Fatalf("expected the second shutdown hook to run even though the first failed")
+	}
+}
+
+// TestShutdownDoesNotDeadlockWhenServeReturnsWithCtxStillLive guards the
+// runDaemon wiring pattern: Serve can return via a non-cancellation Accept
+// error while the outer ctx is still live (internal/ipc/server.go's Accept
+// error path only checks ctx.Done() to decide whether to return nil or the
+// raw error). A shutdown hook that waits on a ticker goroutine tied only to
+// that same outer ctx would then block forever, since nothing ever cancels
+// it. The fix is an independently cancellable child context for the ticker,
+// canceled by the hook itself rather than relied upon to already be done.
+func TestShutdownDoesNotDeadlockWhenServeReturnsWithCtxStillLive(t *testing.T) {
+	srv := newTestIPCServer(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel() // never canceled during the test — Serve must return without it
+
+	tickCtx, cancelTick := context.WithCancel(ctx)
+	defer cancelTick()
+	tickerDone := make(chan struct{})
+	go func() {
+		defer close(tickerDone)
+		ticker := time.NewTicker(time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-tickCtx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+
+	// Force Serve's Accept loop to fail via a non-cancellation error: closing
+	// the listener out from under a blocked Accept, with ctx left live.
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		srv.Close()
+	}()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- serveDaemon(ctx, srv, func() error { cancelTick(); <-tickerDone; return nil })
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatalf("expected serveDaemon to propagate the Accept error triggered by closing the listener")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("serveDaemon deadlocked: the shutdown hook never returned")
 	}
 }

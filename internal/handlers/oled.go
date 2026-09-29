@@ -9,12 +9,14 @@ import (
 	"github.com/dnitros/pironman/internal/oled"
 )
 
-func OLEDHandlers(machine *oled.Machine, cfg *config.Config, cfgPath string) map[string]ipc.Handler {
-	var opMu sync.Mutex
+// OLEDHandlers registers the oled.* IPC handlers. cfgMu must be the same
+// mutex passed to every other handler group sharing cfg, since they all
+// read-modify-write the same *config.Config.
+func OLEDHandlers(machine *oled.Machine, cfg *config.Config, cfgPath string, cfgMu *sync.Mutex) map[string]ipc.Handler {
 	return map[string]ipc.Handler{
-		"oled.on":   oledSetHandler(machine, cfg, cfgPath, &opMu, true),
-		"oled.off":  oledSetHandler(machine, cfg, cfgPath, &opMu, false),
-		"oled.page": oledPageHandler(machine, cfg, cfgPath, &opMu),
+		"oled.on":   oledSetHandler(machine, cfg, cfgPath, cfgMu, true),
+		"oled.off":  oledSetHandler(machine, cfg, cfgPath, cfgMu, false),
+		"oled.page": oledPageHandler(machine, cfg, cfgPath, cfgMu),
 	}
 }
 

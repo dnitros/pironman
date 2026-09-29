@@ -7,6 +7,7 @@ import (
 	"maps"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -294,9 +295,12 @@ func runDaemon(ctx context.Context) error {
 
 	path := ipc.SocketPath()
 
+	// cfgMu is shared across every handler group, since they all
+	// read-modify-write the same *config.Config.
+	var cfgMu sync.Mutex
 	handlerMap := map[string]ipc.Handler{"ping": handlePing, "status": handlers.StatusHandler(rgbStore)}
-	maps.Copy(handlerMap, handlers.RGBHandlers(rgbStore, &cfg, cfgPath))
-	maps.Copy(handlerMap, handlers.OLEDHandlers(oledMachine, &cfg, cfgPath))
+	maps.Copy(handlerMap, handlers.RGBHandlers(rgbStore, &cfg, cfgPath, &cfgMu))
+	maps.Copy(handlerMap, handlers.OLEDHandlers(oledMachine, &cfg, cfgPath, &cfgMu))
 
 	srv := ipc.NewServer(handlerMap)
 	if err := srv.Listen(path); err != nil {
@@ -306,12 +310,17 @@ func runDaemon(ctx context.Context) error {
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	// The ticker gets its own cancellation, independent of ctx: Serve can
+	// return with ctx still live (e.g. a non-cancellation Accept error), and
+	// shutdown must still be able to stop the tick loop before blanking.
+	tickCtx, cancelTick := context.WithCancel(ctx)
+	defer cancelTick()
 	tickerDone := make(chan struct{})
-	go runOLEDTicker(ctx, oledMachine, tickerDone)
+	go runOLEDTicker(tickCtx, oledMachine, tickerDone)
 
 	fmt.Printf("pironman daemon listening on %s\n", path)
 	return serveDaemon(ctx, srv,
-		func() error { <-tickerDone; return nil }, // wait for the tick loop to stop before blanking
+		func() error { cancelTick(); <-tickerDone; return nil }, // stop the tick loop before blanking
 		func() error { return oledMachine.Off() },
 		func() error {
 			_, err := rgbStore.Off()

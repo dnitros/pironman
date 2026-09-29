@@ -4,6 +4,7 @@ import (
 	"image"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -48,7 +49,7 @@ func TestOLEDHandlersOnPersistsStateAndWakesMachine(t *testing.T) {
 	cfg.OLED.Enabled = false
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 
-	path := startTestDaemon(t, OLEDHandlers(machine, &cfg, cfgPath))
+	path := startTestDaemon(t, OLEDHandlers(machine, &cfg, cfgPath, &sync.Mutex{}))
 
 	drawsBefore := display.drawCalls
 	resp, err := ipc.Send(path, "oled.on", nil)
@@ -80,7 +81,7 @@ func TestOLEDHandlersOffPersistsStateAndBlanksMachine(t *testing.T) {
 	cfg.OLED.Enabled = true
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 
-	path := startTestDaemon(t, OLEDHandlers(machine, &cfg, cfgPath))
+	path := startTestDaemon(t, OLEDHandlers(machine, &cfg, cfgPath, &sync.Mutex{}))
 
 	resp, err := ipc.Send(path, "oled.off", nil)
 	if err != nil {
@@ -108,7 +109,7 @@ func TestOLEDHandlersPageNextWakesWhenAsleepAndPersists(t *testing.T) {
 	cfg.OLED.Enabled = false
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 
-	path := startTestDaemon(t, OLEDHandlers(machine, &cfg, cfgPath))
+	path := startTestDaemon(t, OLEDHandlers(machine, &cfg, cfgPath, &sync.Mutex{}))
 
 	resp, err := ipc.Send(path, "oled.page", map[string]any{"page": "next"})
 	if err != nil {
@@ -136,7 +137,7 @@ func TestOLEDHandlersPageNextAdvancesWhenAlreadyAwake(t *testing.T) {
 	cfg.OLED.Enabled = true
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 
-	path := startTestDaemon(t, OLEDHandlers(machine, &cfg, cfgPath))
+	path := startTestDaemon(t, OLEDHandlers(machine, &cfg, cfgPath, &sync.Mutex{}))
 
 	resp, err := ipc.Send(path, "oled.page", map[string]any{"page": "next"})
 	if err != nil {
@@ -156,7 +157,7 @@ func TestOLEDHandlersPagePrevNoOpsWhileAsleepWithoutPersisting(t *testing.T) {
 	cfg.OLED.Enabled = false
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 
-	path := startTestDaemon(t, OLEDHandlers(machine, &cfg, cfgPath))
+	path := startTestDaemon(t, OLEDHandlers(machine, &cfg, cfgPath, &sync.Mutex{}))
 
 	resp, err := ipc.Send(path, "oled.page", map[string]any{"page": "prev"})
 	if err != nil {
@@ -179,7 +180,7 @@ func TestOLEDHandlersPageNameJumpsDirectlyAndWakes(t *testing.T) {
 	cfg.OLED.Enabled = false
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 
-	path := startTestDaemon(t, OLEDHandlers(machine, &cfg, cfgPath))
+	path := startTestDaemon(t, OLEDHandlers(machine, &cfg, cfgPath, &sync.Mutex{}))
 
 	resp, err := ipc.Send(path, "oled.page", map[string]any{"page": "ips"})
 	if err != nil {
@@ -208,7 +209,7 @@ func TestOLEDHandlersPageRejectsUnknownPageWithoutPersisting(t *testing.T) {
 	cfg.OLED.Enabled = false
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 
-	path := startTestDaemon(t, OLEDHandlers(machine, &cfg, cfgPath))
+	path := startTestDaemon(t, OLEDHandlers(machine, &cfg, cfgPath, &sync.Mutex{}))
 
 	resp, err := ipc.Send(path, "oled.page", map[string]any{"page": "not-a-page"})
 	if err != nil {
@@ -230,7 +231,7 @@ func TestOLEDHandlersPageRejectsMissingArgument(t *testing.T) {
 	cfg := config.Default()
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 
-	path := startTestDaemon(t, OLEDHandlers(machine, &cfg, cfgPath))
+	path := startTestDaemon(t, OLEDHandlers(machine, &cfg, cfgPath, &sync.Mutex{}))
 
 	resp, err := ipc.Send(path, "oled.page", nil)
 	if err != nil {
