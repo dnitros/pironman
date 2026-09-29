@@ -36,6 +36,33 @@ func mixLines(snap sysstats.Snapshot, scrollIdx int) []string {
 	}
 }
 
+const ipsPerPage = 3
+
+func ipsLines(snap sysstats.Snapshot, scrollIdx int) []string {
+	if len(snap.Interfaces) == 0 {
+		return []string{"disconnected"}
+	}
+
+	names := make([]string, 0, len(snap.Interfaces))
+	for name := range snap.Interfaces {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	groups := (len(names) + ipsPerPage - 1) / ipsPerPage
+	start := (scrollIdx % groups) * ipsPerPage
+	end := start + ipsPerPage
+	if end > len(names) {
+		end = len(names)
+	}
+
+	lines := make([]string, 0, end-start)
+	for _, name := range names[start:end] {
+		lines = append(lines, fmt.Sprintf("%s %s", name, snap.Interfaces[name]))
+	}
+	return lines
+}
+
 func renderLines(lines []string) *image.Gray {
 	img := image.NewGray(image.Rect(0, 0, hardware.SSD1306Width, hardware.SSD1306Height))
 	d := &font.Drawer{

@@ -389,6 +389,41 @@ func TestTickScrollsMixPageContentOnlyAfterScrollInterval(t *testing.T) {
 	}
 }
 
+func TestTickScrollsIPsPageToNextGroupOfThreeAfterScrollInterval(t *testing.T) {
+	display := &fakeDisplay{}
+	stats := &fakeStats{snap: sysstats.Snapshot{Interfaces: map[string]string{
+		"eth0":  "192.168.1.5",
+		"eth1":  "192.168.1.6",
+		"lo":    "127.0.0.1",
+		"wlan0": "10.0.0.2",
+	}}}
+	clock := newFakeClock()
+	m, err := oled.NewMachine(display, stats, clock, defaultPages(), 10*time.Second, 3*time.Second, true)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+	if err := m.SetPage(oled.PageIPs); err != nil {
+		t.Fatalf("SetPage: %v", err)
+	}
+	initial := display.lastFrame()
+
+	clock.Advance(1 * time.Second)
+	if err := m.Tick(); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+	if !bytes.Equal(display.lastFrame(), initial) {
+		t.Fatalf("expected content to stay the same before the scroll interval elapses")
+	}
+
+	clock.Advance(2 * time.Second)
+	if err := m.Tick(); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+	if bytes.Equal(display.lastFrame(), initial) {
+		t.Fatalf("expected content to scroll to the next group of three once the scroll interval elapses")
+	}
+}
+
 func TestAwakeStatePersistsAcrossSimulatedRestart(t *testing.T) {
 	display := &fakeDisplay{}
 	m, err := oled.NewMachine(display, &fakeStats{}, newFakeClock(), defaultPages(), 10*time.Second, 3*time.Second, true)
