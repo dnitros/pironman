@@ -207,7 +207,13 @@ func (m *Machine) pageLinesLocked() ([]string, error) {
 			return nil, fmt.Errorf("read stats: %w", err)
 		}
 		return ipsLines(snap, m.scrollIdx), nil
+	case PageDisk:
+		snap, err := m.stats.Snapshot()
+		if err != nil {
+			return nil, fmt.Errorf("read stats: %w", err)
+		}
+		return diskLines(snap, m.scrollIdx), nil
 	default:
-		return []string{page, "(coming soon)"}, nil
+		return nil, fmt.Errorf("oled: unknown page %q", page)
 	}
 }

@@ -1,6 +1,7 @@
 package sysstats
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -78,6 +79,7 @@ func TestProcSourceSnapshotReportsMemAndTempAndInterfaces(t *testing.T) {
 	statPath := writeFixture(t, dir, "stat", "cpu  100 0 50 800 20 0 0 0 0 0\n")
 	thermalPath := writeFixture(t, dir, "temp", "45678\n")
 	meminfoPath := writeFixture(t, dir, "meminfo", "MemTotal:        1000 kB\nMemAvailable:     400 kB\n")
+	mountsPath := writeFixture(t, dir, "mounts", "")
 
 	old := listInterfaces
 	listInterfaces = func() ([]netIface, error) {
@@ -85,7 +87,7 @@ func TestProcSourceSnapshotReportsMemAndTempAndInterfaces(t *testing.T) {
 	}
 	t.Cleanup(func() { listInterfaces = old })
 
-	src := NewProcSource(statPath, thermalPath, meminfoPath)
+	src := NewProcSource(statPath, thermalPath, meminfoPath, mountsPath)
 
 	snap, err := src.Snapshot()
 	if err != nil {
@@ -117,12 +119,13 @@ func TestProcSourceSnapshotComputesCPUPercentFromDelta(t *testing.T) {
 	statPath := filepath.Join(dir, "stat")
 	thermalPath := writeFixture(t, dir, "temp", "40000\n")
 	meminfoPath := writeFixture(t, dir, "meminfo", "MemTotal:        1000 kB\nMemAvailable:     500 kB\n")
+	mountsPath := writeFixture(t, dir, "mounts", "")
 
 	old := listInterfaces
 	listInterfaces = func() ([]netIface, error) { return nil, nil }
 	t.Cleanup(func() { listInterfaces = old })
 
-	src := NewProcSource(statPath, thermalPath, meminfoPath)
+	src := NewProcSource(statPath, thermalPath, meminfoPath, mountsPath)
 
 	writeFixture(t, dir, "stat", "cpu  100 0 50 800 20 0 0 0 0 0\n")
 	if _, err := src.Snapshot(); err != nil {
@@ -144,12 +147,13 @@ func TestProcSourceSnapshotReportsEmptyInterfacesWhenDisconnected(t *testing.T) 
 	statPath := writeFixture(t, dir, "stat", "cpu  100 0 50 800 20 0 0 0 0 0\n")
 	thermalPath := writeFixture(t, dir, "temp", "40000\n")
 	meminfoPath := writeFixture(t, dir, "meminfo", "MemTotal:        1000 kB\nMemAvailable:     500 kB\n")
+	mountsPath := writeFixture(t, dir, "mounts", "")
 
 	old := listInterfaces
 	listInterfaces = func() ([]netIface, error) { return nil, nil }
 	t.Cleanup(func() { listInterfaces = old })
 
-	src := NewProcSource(statPath, thermalPath, meminfoPath)
+	src := NewProcSource(statPath, thermalPath, meminfoPath, mountsPath)
 
 	snap, err := src.Snapshot()
 	if err != nil {
@@ -157,5 +161,121 @@ func TestProcSourceSnapshotReportsEmptyInterfacesWhenDisconnected(t *testing.T) 
 	}
 	if len(snap.Interfaces) != 0 {
 		t.Fatalf("expected no interfaces, got %v", snap.Interfaces)
+	}
+}
+
+func TestProcSourceSnapshotReportsDisksFromMounts(t *testing.T) {
+	dir := t.TempDir()
+	statPath := writeFixture(t, dir, "stat", "cpu  100 0 50 800 20 0 0 0 0 0\n")
+	thermalPath := writeFixture(t, dir, "temp", "40000\n")
+	meminfoPath := writeFixture(t, dir, "meminfo", "MemTotal:        1000 kB\nMemAvailable:     500 kB\n")
+	mountsPath := writeFixture(t, dir, "mounts",
+		"/dev/mmcblk0p2 / ext4 rw,noatime 0 0\n"+
+			"proc /proc proc rw 0 0\n"+
+			"/dev/sda1 /mnt/usb ext4 rw 0 0\n")
+
+	oldListInterfaces := listInterfaces
+	listInterfaces = func() ([]netIface, error) { return nil, nil }
+	t.Cleanup(func() { listInterfaces = oldListInterfaces })
+
+	oldDiskUsage := diskUsage
+	diskUsage = func(mountpoint string) (usedBytes, totalBytes uint64, err error) {
+		switch mountpoint {
+		case "/":
+			return 60, 100, nil
+		case "/mnt/usb":
+			return 30, 100, nil
+		default:
+			return 0, 0, fmt.Errorf("unexpected mountpoint %q", mountpoint)
+		}
+	}
+	t.Cleanup(func() { diskUsage = oldDiskUsage })
+
+	src := NewProcSource(statPath, thermalPath, meminfoPath, mountsPath)
+
+	snap, err := src.Snapshot()
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	want := []Disk{
+		{Type: "sd", UsedBytes: 60, TotalBytes: 100, Percent: 60},
+		{Type: "usb", UsedBytes: 30, TotalBytes: 100, Percent: 30},
+	}
+	if len(snap.Disks) != len(want) {
+		t.Fatalf("Disks = %+v, want %+v", snap.Disks, want)
+	}
+	for i := range want {
+		if snap.Disks[i] != want[i] {
+			t.Fatalf("Disks[%d] = %+v, want %+v", i, snap.Disks[i], want[i])
+		}
+	}
+}
+
+func TestParseMountsExtractsDeviceAndMountpoint(t *testing.T) {
+	data := []byte("/dev/mmcblk0p2 / ext4 rw,noatime 0 0\nproc /proc proc rw 0 0\n\n")
+
+	entries := parseMounts(data)
+
+	want := []mountEntry{
+		{device: "/dev/mmcblk0p2", mountpoint: "/"},
+		{device: "proc", mountpoint: "/proc"},
+	}
+	if len(entries) != len(want) {
+		t.Fatalf("entries = %+v, want %+v", entries, want)
+	}
+	for i := range want {
+		if entries[i] != want[i] {
+			t.Fatalf("entries[%d] = %+v, want %+v", i, entries[i], want[i])
+		}
+	}
+}
+
+func TestClassifyDiskType(t *testing.T) {
+	cases := map[string]string{
+		"/dev/nvme0n1p1": "nvme",
+		"/dev/mmcblk0p2": "sd",
+		"/dev/md0":       "raid",
+		"/dev/sda1":      "usb",
+		"/dev/whatever":  "hd",
+	}
+	for device, want := range cases {
+		if got := classifyDiskType(device); got != want {
+			t.Fatalf("classifyDiskType(%q) = %q, want %q", device, got, want)
+		}
+	}
+}
+
+func TestDisksFromMountsSkipsNonDeviceMountsAndFailedUsageLookups(t *testing.T) {
+	entries := []mountEntry{
+		{device: "/dev/mmcblk0p2", mountpoint: "/"},
+		{device: "tmpfs", mountpoint: "/tmp"},
+		{device: "/dev/sda1", mountpoint: "/mnt/usb"},
+	}
+	usage := func(mountpoint string) (usedBytes, totalBytes uint64, err error) {
+		if mountpoint == "/mnt/usb" {
+			return 0, 0, fmt.Errorf("statfs failed")
+		}
+		return 40, 100, nil
+	}
+
+	disks := disksFromMounts(entries, usage)
+
+	if len(disks) != 1 {
+		t.Fatalf("disks = %+v, want exactly one disk", disks)
+	}
+	if disks[0] != (Disk{Type: "sd", UsedBytes: 40, TotalBytes: 100, Percent: 40}) {
+		t.Fatalf("disks[0] = %+v, want the / disk with 40%% used", disks[0])
+	}
+}
+
+func TestDisksFromMountsReturnsNoneWhenNoRealDisksMounted(t *testing.T) {
+	entries := []mountEntry{{device: "tmpfs", mountpoint: "/tmp"}}
+	usage := func(mountpoint string) (usedBytes, totalBytes uint64, err error) {
+		t.Fatalf("usage lookup should not run for non-device mounts")
+		return 0, 0, nil
+	}
+
+	if disks := disksFromMounts(entries, usage); len(disks) != 0 {
+		t.Fatalf("disks = %+v, want none", disks)
 	}
 }

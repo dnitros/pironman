@@ -36,6 +36,41 @@ func mixLines(snap sysstats.Snapshot, scrollIdx int) []string {
 	}
 }
 
+func diskLines(snap sysstats.Snapshot, scrollIdx int) []string {
+	if len(snap.Disks) == 0 {
+		return []string{"no disks found"}
+	}
+
+	const groupSize = 3
+	groups := (len(snap.Disks) + groupSize - 1) / groupSize
+	start := (scrollIdx % groups) * groupSize
+	end := start + groupSize
+	if end > len(snap.Disks) {
+		end = len(snap.Disks)
+	}
+
+	lines := make([]string, 0, end-start)
+	for _, d := range snap.Disks[start:end] {
+		lines = append(lines, fmt.Sprintf("%s %s %.0f%%", d.Type, formatDiskSize(d.UsedBytes, d.TotalBytes), d.Percent))
+	}
+	return lines
+}
+
+func formatDiskSize(usedBytes, totalBytes uint64) string {
+	units := [...]string{"B", "K", "M", "G", "T"}
+	scaledUsed, scaledTotal := float64(usedBytes), float64(totalBytes)
+	unit := 0
+	for scaledTotal >= 1000 && unit < len(units)-1 {
+		scaledUsed /= 1024
+		scaledTotal /= 1024
+		unit++
+	}
+	if unit == 0 || scaledTotal >= 10 {
+		return fmt.Sprintf("%.0f/%.0f%s", scaledUsed, scaledTotal, units[unit])
+	}
+	return fmt.Sprintf("%.1f/%.1f%s", scaledUsed, scaledTotal, units[unit])
+}
+
 const ipsPerPage = 3
 
 func ipsLines(snap sysstats.Snapshot, scrollIdx int) []string {

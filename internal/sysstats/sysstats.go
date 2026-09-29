@@ -7,13 +7,22 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 )
 
 const (
 	DefaultStatPath    = "/proc/stat"
 	DefaultThermalPath = "/sys/class/thermal/thermal_zone0/temp"
 	DefaultMemInfoPath = "/proc/meminfo"
+	DefaultMountsPath  = "/proc/mounts"
 )
+
+type Disk struct {
+	Type       string
+	UsedBytes  uint64
+	TotalBytes uint64
+	Percent    float64
+}
 
 type Snapshot struct {
 	CPUPercent    float64
@@ -22,6 +31,7 @@ type Snapshot struct {
 	MemTotalBytes uint64
 	MemPercent    float64
 	Interfaces    map[string]string
+	Disks         []Disk
 }
 
 type Source interface {
@@ -29,15 +39,15 @@ type Source interface {
 }
 
 type ProcSource struct {
-	statPath, thermalPath, meminfoPath string
+	statPath, thermalPath, meminfoPath, mountsPath string
 
 	mu                  sync.Mutex
 	prevIdle, prevTotal uint64
 	havePrev            bool
 }
 
-func NewProcSource(statPath, thermalPath, meminfoPath string) *ProcSource {
-	return &ProcSource{statPath: statPath, thermalPath: thermalPath, meminfoPath: meminfoPath}
+func NewProcSource(statPath, thermalPath, meminfoPath, mountsPath string) *ProcSource {
+	return &ProcSource{statPath: statPath, thermalPath: thermalPath, meminfoPath: meminfoPath, mountsPath: mountsPath}
 }
 
 func (s *ProcSource) Snapshot() (Snapshot, error) {
@@ -82,6 +92,12 @@ func (s *ProcSource) Snapshot() (Snapshot, error) {
 		memPercent = 100 * float64(usedBytes) / float64(totalBytes)
 	}
 
+	mountsData, err := os.ReadFile(s.mountsPath)
+	if err != nil {
+		return Snapshot{}, fmt.Errorf("read %s: %w", s.mountsPath, err)
+	}
+	disks := disksFromMounts(parseMounts(mountsData), diskUsage)
+
 	s.mu.Lock()
 	var cpuPercent float64
 	if s.havePrev {
@@ -101,6 +117,7 @@ func (s *ProcSource) Snapshot() (Snapshot, error) {
 		MemTotalBytes: totalBytes,
 		MemPercent:    memPercent,
 		Interfaces:    interfaces,
+		Disks:         disks,
 	}, nil
 }
 
@@ -168,6 +185,76 @@ func parseThermalTempC(data []byte) (float64, error) {
 		return 0, fmt.Errorf("parse thermal reading %q: %w", strings.TrimSpace(string(data)), err)
 	}
 	return float64(milliC) / 1000, nil
+}
+
+type mountEntry struct {
+	device     string
+	mountpoint string
+}
+
+// ponytail: doesn't decode the \NNN octal escapes the kernel writes for spaces/tabs/backslashes
+// in device or mountpoint fields; decode them if a real mountpoint ever contains one.
+func parseMounts(data []byte) []mountEntry {
+	var entries []mountEntry
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		entries = append(entries, mountEntry{device: fields[0], mountpoint: fields[1]})
+	}
+	return entries
+}
+
+func classifyDiskType(device string) string {
+	switch {
+	case strings.HasPrefix(device, "/dev/nvme"):
+		return "nvme"
+	case strings.HasPrefix(device, "/dev/mmcblk"):
+		return "sd"
+	case strings.HasPrefix(device, "/dev/md"):
+		return "raid"
+	case strings.HasPrefix(device, "/dev/sd"):
+		return "usb"
+	default:
+		return "hd"
+	}
+}
+
+func disksFromMounts(entries []mountEntry, usage func(mountpoint string) (usedBytes, totalBytes uint64, err error)) []Disk {
+	var disks []Disk
+	for _, e := range entries {
+		if !strings.HasPrefix(e.device, "/dev/") {
+			continue
+		}
+		usedBytes, totalBytes, err := usage(e.mountpoint)
+		if err != nil {
+			continue
+		}
+		var percent float64
+		if totalBytes > 0 {
+			percent = 100 * float64(usedBytes) / float64(totalBytes)
+		}
+		disks = append(disks, Disk{
+			Type:       classifyDiskType(e.device),
+			UsedBytes:  usedBytes,
+			TotalBytes: totalBytes,
+			Percent:    percent,
+		})
+	}
+	return disks
+}
+
+var diskUsage = defaultDiskUsage
+
+func defaultDiskUsage(mountpoint string) (usedBytes, totalBytes uint64, err error) {
+	var st syscall.Statfs_t
+	if err := syscall.Statfs(mountpoint, &st); err != nil {
+		return 0, 0, fmt.Errorf("statfs %s: %w", mountpoint, err)
+	}
+	totalBytes = uint64(st.Bsize) * st.Blocks
+	freeBytes := uint64(st.Bsize) * st.Bfree
+	return totalBytes - freeBytes, totalBytes, nil
 }
 
 type netIface struct {
