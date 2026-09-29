@@ -4,9 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/user"
 	"strconv"
 	"syscall"
+	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
@@ -16,6 +18,7 @@ import (
 )
 
 const spiDevPath = "/dev/spidev0.0"
+const i2cDevPath = "/dev/i2c-1"
 
 type DoctorInfo struct {
 	PlatformSupported bool
@@ -28,6 +31,8 @@ type DoctorInfo struct {
 	ConfigPath        string
 	ConfigStatus      string
 	SPIEnabled        bool
+	I2CEnabled        bool
+	I2CToolsInstalled bool
 }
 
 func newDoctorCmd() *cobra.Command {
@@ -35,7 +40,7 @@ func newDoctorCmd() *cobra.Command {
 		Use:   "doctor",
 		Short: "Show daemon reachability, install/running state, socket permissions, and config readability",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			info, err := gatherDoctor(ipc.SocketPath(), systemdunit.NewManager(), config.Path(), spiDevPath)
+			info, err := gatherDoctor(ipc.SocketPath(), systemdunit.NewManager(), config.Path(), spiDevPath, i2cDevPath)
 			if err != nil {
 				return err
 			}
@@ -45,7 +50,7 @@ func newDoctorCmd() *cobra.Command {
 	}
 }
 
-func gatherDoctor(socketPath string, mgr systemdunit.Manager, cfgPath string, spiPath string) (DoctorInfo, error) {
+func gatherDoctor(socketPath string, mgr systemdunit.Manager, cfgPath string, spiPath string, i2cPath string) (DoctorInfo, error) {
 	supported := mgr.IsSupported()
 
 	var installed, active bool
@@ -74,12 +79,19 @@ func gatherDoctor(socketPath string, mgr systemdunit.Manager, cfgPath string, sp
 		SocketPermissions: describeSocketPermissions(socketPath),
 		ConfigPath:        cfgPath,
 		ConfigStatus:      describeConfigStatus(cfgPath),
-		SPIEnabled:        spiEnabled(spiPath),
+		SPIEnabled:        devPathExists(spiPath),
+		I2CEnabled:        devPathExists(i2cPath),
+		I2CToolsInstalled: i2cToolsInstalled(),
 	}, nil
 }
 
-func spiEnabled(path string) bool {
+func devPathExists(path string) bool {
 	_, err := os.Stat(path)
+	return err == nil
+}
+
+func i2cToolsInstalled() bool {
+	_, err := exec.LookPath("i2cdetect")
 	return err == nil
 }
 
@@ -129,21 +141,34 @@ func describeConfigStatus(cfgPath string) string {
 }
 
 func printDoctor(info DoctorInfo) {
+	fmt.Println("Daemon")
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', 0)
 	if !info.PlatformSupported {
-		fmt.Println("platform: unsupported (systemctl not found — pironman requires a Linux system with systemd)")
+		fmt.Fprintln(w, "  platform:\tunsupported (systemctl not found — pironman requires a Linux system with systemd)")
 	} else {
-		fmt.Println("platform: supported")
-		fmt.Printf("installed: %t\n", info.Installed)
-		fmt.Printf("active: %t\n", info.Active)
+		fmt.Fprintln(w, "  platform:\tsupported")
+		fmt.Fprintf(w, "  installed:\t%t\n", info.Installed)
+		fmt.Fprintf(w, "  active:\t%t\n", info.Active)
 	}
 	if info.Reachable {
-		fmt.Println("daemon: reachable")
+		fmt.Fprintln(w, "  daemon:\treachable")
 	} else {
-		fmt.Printf("daemon: unreachable (%s)\n", info.UnreachableReason)
+		fmt.Fprintf(w, "  daemon:\tunreachable (%s)\n", info.UnreachableReason)
 	}
-	fmt.Printf("socket path: %s\n", info.SocketPath)
-	fmt.Printf("socket permissions: %s\n", info.SocketPermissions)
-	fmt.Printf("config path: %s\n", info.ConfigPath)
-	fmt.Printf("config: %s\n", info.ConfigStatus)
-	fmt.Printf("SPI enabled: %t\n", info.SPIEnabled)
+	fmt.Fprintf(w, "  socket path:\t%s\n", info.SocketPath)
+	fmt.Fprintf(w, "  socket permissions:\t%s\n", info.SocketPermissions)
+	w.Flush()
+
+	fmt.Println("Config")
+	w = tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', 0)
+	fmt.Fprintf(w, "  config path:\t%s\n", info.ConfigPath)
+	fmt.Fprintf(w, "  config:\t%s\n", info.ConfigStatus)
+	w.Flush()
+
+	fmt.Println("Hardware")
+	w = tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', 0)
+	fmt.Fprintf(w, "  SPI enabled:\t%t\n", info.SPIEnabled)
+	fmt.Fprintf(w, "  I2C enabled:\t%t\n", info.I2CEnabled)
+	fmt.Fprintf(w, "  i2c-tools installed:\t%t\n", info.I2CToolsInstalled)
+	w.Flush()
 }
