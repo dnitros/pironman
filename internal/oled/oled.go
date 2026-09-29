@@ -201,6 +201,12 @@ func (m *Machine) pageLinesLocked() ([]string, error) {
 			return nil, fmt.Errorf("read stats: %w", err)
 		}
 		return performanceLines(snap), nil
+	case PageIPs:
+		snap, err := m.stats.Snapshot()
+		if err != nil {
+			return nil, fmt.Errorf("read stats: %w", err)
+		}
+		return ipsLines(snap, m.scrollIdx), nil
 	default:
 		return []string{page, "(coming soon)"}, nil
 	}
