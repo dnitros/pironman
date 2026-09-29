@@ -192,6 +192,8 @@ type mountEntry struct {
 	mountpoint string
 }
 
+// ponytail: doesn't decode the \NNN octal escapes the kernel writes for spaces/tabs/backslashes
+// in device or mountpoint fields; decode them if a real mountpoint ever contains one.
 func parseMounts(data []byte) []mountEntry {
 	var entries []mountEntry
 	for _, line := range strings.Split(string(data), "\n") {

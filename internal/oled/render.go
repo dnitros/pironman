@@ -51,13 +51,24 @@ func diskLines(snap sysstats.Snapshot, scrollIdx int) []string {
 
 	lines := make([]string, 0, end-start)
 	for _, d := range snap.Disks[start:end] {
-		lines = append(lines, fmt.Sprintf("%s %.0fG/%.0fG %.0f%%", d.Type, gib(d.UsedBytes), gib(d.TotalBytes), d.Percent))
+		lines = append(lines, fmt.Sprintf("%s %s %.0f%%", d.Type, formatDiskSize(d.UsedBytes, d.TotalBytes), d.Percent))
 	}
 	return lines
 }
 
-func gib(bytes uint64) float64 {
-	return float64(bytes) / (1 << 30)
+func formatDiskSize(usedBytes, totalBytes uint64) string {
+	units := [...]string{"B", "K", "M", "G", "T"}
+	scaledUsed, scaledTotal := float64(usedBytes), float64(totalBytes)
+	unit := 0
+	for scaledTotal >= 1000 && unit < len(units)-1 {
+		scaledUsed /= 1024
+		scaledTotal /= 1024
+		unit++
+	}
+	if unit == 0 || scaledTotal >= 10 {
+		return fmt.Sprintf("%.0f/%.0f%s", scaledUsed, scaledTotal, units[unit])
+	}
+	return fmt.Sprintf("%.1f/%.1f%s", scaledUsed, scaledTotal, units[unit])
 }
 
 func renderLines(lines []string) *image.Gray {

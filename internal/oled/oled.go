@@ -196,12 +196,8 @@ func (m *Machine) pageLinesLocked() ([]string, error) {
 		return nil, fmt.Errorf("read stats: %w", err)
 	}
 
-	switch page {
-	case PageMix:
-		return mixLines(snap, m.scrollIdx), nil
-	case PageDisk:
+	if page == PageDisk {
 		return diskLines(snap, m.scrollIdx), nil
-	default:
-		return []string{page, "(coming soon)"}, nil
 	}
+	return mixLines(snap, m.scrollIdx), nil
 }

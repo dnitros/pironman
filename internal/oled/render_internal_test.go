@@ -64,7 +64,7 @@ func TestDiskLinesShowsAllDisksWhenThreeOrFewer(t *testing.T) {
 
 	lines := diskLines(snap, 0)
 
-	want := []string{"sd 12G/32G 38%", "usb 1G/2G 50%"}
+	want := []string{"sd 12/32G 38%", "usb 1.0/2.0G 50%"}
 	if len(lines) != len(want) {
 		t.Fatalf("lines = %+v, want %+v", lines, want)
 	}
@@ -94,6 +94,34 @@ func TestDiskLinesWindowsIntoGroupsOfThreeAndScrolls(t *testing.T) {
 	wrapped := diskLines(snap, 2)
 	if len(wrapped) != 3 || wrapped[0][:1] != "a" {
 		t.Fatalf("scrollIdx=2 = %+v, want wraparound back to the first group", wrapped)
+	}
+}
+
+func TestFormatDiskSizeScalesUnitForSubGiBDisk(t *testing.T) {
+	if got := formatDiskSize(502<<20, 512<<20); got != "502/512M" {
+		t.Fatalf("formatDiskSize = %q, want %q", got, "502/512M")
+	}
+}
+
+func TestFormatDiskSizeScalesUnitForMultiTeraByteDisk(t *testing.T) {
+	if got := formatDiskSize(2_000_000_000_000, 2_000_000_000_000); got != "1.8/1.8T" {
+		t.Fatalf("formatDiskSize = %q, want %q", got, "1.8/1.8T")
+	}
+}
+
+func TestDiskLinesFitDisplayWidthForExtremeSizes(t *testing.T) {
+	snap := sysstats.Snapshot{Disks: []sysstats.Disk{
+		{Type: "sd", UsedBytes: 502 << 20, TotalBytes: 512 << 20, Percent: 98},
+		{Type: "nvme", UsedBytes: 2_000_000_000_000, TotalBytes: 2_000_000_000_000, Percent: 100},
+	}}
+
+	for _, line := range diskLines(snap, 0) {
+		if fitted := fitLine(line); fitted != line {
+			t.Fatalf("line %q was truncated to %q, want it to already fit the display width", line, fitted)
+		}
+		if font.MeasureString(basicfont.Face7x13, line) > fixed.I(hardware.SSD1306Width) {
+			t.Fatalf("line %q measures wider than the %dpx display", line, hardware.SSD1306Width)
+		}
 	}
 }
 
