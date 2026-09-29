@@ -221,6 +221,11 @@ func classifyDiskType(device string) string {
 	}
 }
 
+// ponytail: two whole-disk devices whose names differ only by a trailing
+// digit (e.g. /dev/md0 vs /dev/md1, /dev/nvme0n1 vs /dev/nvme0n2) parent-name
+// to the same string and would wrongly merge into one row; add a
+// /sys/class/block/<name>/partition existence check if multi-array or
+// multi-NVMe setups need distinguishing.
 func parentDeviceName(device string) string {
 	name := strings.TrimPrefix(device, "/dev/")
 	if name == "" || !isDigit(name[len(name)-1]) {
