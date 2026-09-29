@@ -221,8 +221,46 @@ func classifyDiskType(device string) string {
 	}
 }
 
+func parentDeviceName(device string) string {
+	name := strings.TrimPrefix(device, "/dev/")
+	if name == "" || !isDigit(name[len(name)-1]) {
+		return name
+	}
+	if idx := strings.LastIndexByte(name, 'p'); idx > 0 && idx < len(name)-1 &&
+		isDigit(name[idx-1]) && allDigits(name[idx+1:]) {
+		return name[:idx]
+	}
+	i := len(name)
+	for i > 0 && isDigit(name[i-1]) {
+		i--
+	}
+	return name[:i]
+}
+
+func isDigit(b byte) bool { return b >= '0' && b <= '9' }
+
+func allDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if !isDigit(s[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func percentOf(usedBytes, totalBytes uint64) float64 {
+	if totalBytes == 0 {
+		return 0
+	}
+	return 100 * float64(usedBytes) / float64(totalBytes)
+}
+
 func disksFromMounts(entries []mountEntry, usage func(mountpoint string) (usedBytes, totalBytes uint64, err error)) []Disk {
 	var disks []Disk
+	rowByParent := make(map[string]int)
 	for _, e := range entries {
 		if !strings.HasPrefix(e.device, "/dev/") {
 			continue
@@ -231,15 +269,19 @@ func disksFromMounts(entries []mountEntry, usage func(mountpoint string) (usedBy
 		if err != nil {
 			continue
 		}
-		var percent float64
-		if totalBytes > 0 {
-			percent = 100 * float64(usedBytes) / float64(totalBytes)
+		parent := parentDeviceName(e.device)
+		if i, ok := rowByParent[parent]; ok {
+			disks[i].UsedBytes += usedBytes
+			disks[i].TotalBytes += totalBytes
+			disks[i].Percent = percentOf(disks[i].UsedBytes, disks[i].TotalBytes)
+			continue
 		}
+		rowByParent[parent] = len(disks)
 		disks = append(disks, Disk{
 			Type:       classifyDiskType(e.device),
 			UsedBytes:  usedBytes,
 			TotalBytes: totalBytes,
-			Percent:    percent,
+			Percent:    percentOf(usedBytes, totalBytes),
 		})
 	}
 	return disks
