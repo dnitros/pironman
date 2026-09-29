@@ -141,6 +141,36 @@ func TestAdvanceWakesWithoutChangingPageWhenAsleep(t *testing.T) {
 	}
 }
 
+func TestAdvanceResetsScrollTimerOnWake(t *testing.T) {
+	display := &fakeDisplay{}
+	stats := &fakeStats{snap: sysstats.Snapshot{Interfaces: map[string]string{
+		"eth0":  "192.168.1.5",
+		"wlan0": "10.0.0.2",
+	}}}
+	clock := newFakeClock()
+	m, err := oled.NewMachine(display, stats, clock, defaultPages(), 10*time.Second, 3*time.Second, false)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+
+	// Asleep for a long time before waking: if the scroll timer weren't reset
+	// on wake, this stale elapsed time would immediately roll the content
+	// over on the very next tick.
+	clock.Advance(time.Hour)
+	if err := m.Advance(); err != nil {
+		t.Fatalf("Advance: %v", err)
+	}
+	afterWake := display.lastFrame()
+
+	clock.Advance(1 * time.Second)
+	if err := m.Tick(); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+	if !bytes.Equal(display.lastFrame(), afterWake) {
+		t.Fatalf("expected content to stay the same 1s after waking, well before the 3s scroll interval")
+	}
+}
+
 func TestAdvanceMovesToNextPageWhenAwake(t *testing.T) {
 	display := &fakeDisplay{}
 	m, err := oled.NewMachine(display, &fakeStats{}, newFakeClock(), defaultPages(), 10*time.Second, 3*time.Second, true)

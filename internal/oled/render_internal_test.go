@@ -3,6 +3,11 @@ package oled
 import (
 	"testing"
 
+	"golang.org/x/image/font"
+	"golang.org/x/image/font/basicfont"
+	"golang.org/x/image/math/fixed"
+
+	"github.com/dnitros/pironman/internal/hardware"
 	"github.com/dnitros/pironman/internal/sysstats"
 )
 
@@ -40,6 +45,29 @@ func TestMixLinesCyclesInterfacesByScrollIndexInSortedOrder(t *testing.T) {
 	}
 	if got := mixLines(snap, 2)[0]; got != "eth0 192.168.1.5" {
 		t.Fatalf("scrollIdx=2: got %q, want wraparound back to eth0", got)
+	}
+}
+
+func TestFitLineLeavesShortLinesUnchanged(t *testing.T) {
+	if got := fitLine("CPU 12%"); got != "CPU 12%" {
+		t.Fatalf("fitLine(%q) = %q, want unchanged", "CPU 12%", got)
+	}
+}
+
+func TestFitLineTruncatesToFitDisplayWidth(t *testing.T) {
+	// This exact string measures wider than the 128px display at Face7x13.
+	long := "wlan0 192.168.1.100"
+	if font.MeasureString(basicfont.Face7x13, long) <= fixed.I(hardware.SSD1306Width) {
+		t.Fatalf("test fixture %q must be wider than the display to be meaningful", long)
+	}
+
+	got := fitLine(long)
+
+	if font.MeasureString(basicfont.Face7x13, got) > fixed.I(hardware.SSD1306Width) {
+		t.Fatalf("fitLine(%q) = %q, still too wide for the display", long, got)
+	}
+	if got == long {
+		t.Fatalf("expected fitLine to actually truncate %q", long)
 	}
 }
 

@@ -49,7 +49,18 @@ func renderLines(lines []string) *image.Gray {
 	}
 	for i, line := range lines {
 		d.Dot = fixed.Point26_6{X: fixed.I(0), Y: fixed.I((i + 1) * textLineHeight)}
-		d.DrawString(line)
+		d.DrawString(fitLine(line))
 	}
 	return img
+}
+
+// fitLine truncates s (from the end) until it measures within the SSD1306's
+// pixel width at Face7x13 — e.g. "wlan0 192.168.1.100" is a character wider
+// than the display.
+func fitLine(s string) string {
+	maxWidth := fixed.I(hardware.SSD1306Width)
+	for len(s) > 0 && font.MeasureString(basicfont.Face7x13, s) > maxWidth {
+		s = s[:len(s)-1]
+	}
+	return s
 }

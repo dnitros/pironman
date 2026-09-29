@@ -107,6 +107,7 @@ func (m *Machine) Advance() error {
 
 	if !m.awake {
 		m.awake = true
+		m.resetScrollLocked()
 		m.lastActivity = m.clock.Now()
 		return m.renderLocked()
 	}
