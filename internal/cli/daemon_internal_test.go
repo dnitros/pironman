@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"image"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,7 +11,9 @@ import (
 
 	"github.com/dnitros/pironman/internal/groupaccess"
 	"github.com/dnitros/pironman/internal/ipc"
+	"github.com/dnitros/pironman/internal/oled"
 	"github.com/dnitros/pironman/internal/rgb"
+	"github.com/dnitros/pironman/internal/sysstats"
 )
 
 type fakeServiceManager struct {
@@ -389,35 +392,40 @@ func TestServeDaemonRunsRemainingHooksWhenOneFails(t *testing.T) {
 	}
 }
 
+type fakeOLEDDisplay struct{}
+
+func (fakeOLEDDisplay) Draw(img *image.Gray) error { return nil }
+
+type fakeOLEDStatsSource struct{}
+
+func (fakeOLEDStatsSource) Snapshot() (sysstats.Snapshot, error) { return sysstats.Snapshot{}, nil }
+
+type fixedOLEDClock struct{ t time.Time }
+
+func (f fixedOLEDClock) Now() time.Time { return f.t }
+
 // TestShutdownDoesNotDeadlockWhenServeReturnsWithCtxStillLive guards the
-// runDaemon wiring pattern: Serve can return via a non-cancellation Accept
-// error while the outer ctx is still live (internal/ipc/server.go's Accept
-// error path only checks ctx.Done() to decide whether to return nil or the
-// raw error). A shutdown hook that waits on a ticker goroutine tied only to
-// that same outer ctx would then block forever, since nothing ever cancels
-// it. The fix is an independently cancellable child context for the ticker,
-// canceled by the hook itself rather than relied upon to already be done.
+// exact runDaemon wiring (startOLEDTickLoop): Serve can return via a
+// non-cancellation Accept error while the outer ctx is still live
+// (internal/ipc/server.go's Accept error path only checks ctx.Done() to
+// decide whether to return nil or the raw error). A shutdown hook that waits
+// on a ticker goroutine tied only to that same outer ctx would then block
+// forever, since nothing ever cancels it. The fix is startOLEDTickLoop's
+// independently cancellable child context, canceled by its returned hook
+// itself rather than relied upon to already be done.
 func TestShutdownDoesNotDeadlockWhenServeReturnsWithCtxStillLive(t *testing.T) {
 	srv := newTestIPCServer(t)
+
+	machine, err := oled.NewMachine(fakeOLEDDisplay{}, fakeOLEDStatsSource{}, fixedOLEDClock{t: time.Now()},
+		[]string{oled.PageMix}, 10*time.Second, 3*time.Second, true)
+	if err != nil {
+		t.Fatalf("oled.NewMachine: %v", err)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel() // never canceled during the test — Serve must return without it
 
-	tickCtx, cancelTick := context.WithCancel(ctx)
-	defer cancelTick()
-	tickerDone := make(chan struct{})
-	go func() {
-		defer close(tickerDone)
-		ticker := time.NewTicker(time.Millisecond)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-tickCtx.Done():
-				return
-			case <-ticker.C:
-			}
-		}
-	}()
+	stopTicker := startOLEDTickLoop(ctx, machine)
 
 	// Force Serve's Accept loop to fail via a non-cancellation error: closing
 	// the listener out from under a blocked Accept, with ctx left live.
@@ -428,7 +436,7 @@ func TestShutdownDoesNotDeadlockWhenServeReturnsWithCtxStillLive(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- serveDaemon(ctx, srv, func() error { cancelTick(); <-tickerDone; return nil })
+		done <- serveDaemon(ctx, srv, stopTicker)
 	}()
 
 	select {

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"maps"
 	"path/filepath"
 	"sync"
@@ -28,6 +29,12 @@ func TestRGBAndOLEDHandlersShareConfigMutexUnderConcurrentLoad(t *testing.T) {
 	cfg.RGB.Enabled = false
 	cfg.OLED.Enabled = false
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+	// Pre-write the false starting state: config.Load falls back to
+	// config.Default() (both fields true) for a missing file, which would
+	// make the assertions below pass even if every send silently failed.
+	if err := cfg.Save(cfgPath); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
 
 	var cfgMu sync.Mutex
 	handlerMap := map[string]ipc.Handler{}
@@ -38,19 +45,28 @@ func TestRGBAndOLEDHandlersShareConfigMutexUnderConcurrentLoad(t *testing.T) {
 
 	const n = 50
 	var wg sync.WaitGroup
+	errs := make(chan error, 2*n)
+	send := func(cmd string) {
+		defer wg.Done()
+		resp, err := ipc.Send(path, cmd, nil)
+		if err != nil {
+			errs <- fmt.Errorf("%s: %w", cmd, err)
+			return
+		}
+		if !resp.OK {
+			errs <- fmt.Errorf("%s: %s", cmd, resp.Error)
+		}
+	}
 	for i := 0; i < n; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			ipc.Send(path, "rgb.on", nil)
-		}()
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			ipc.Send(path, "oled.on", nil)
-		}()
+		wg.Add(2)
+		go send("rgb.on")
+		go send("oled.on")
 	}
 	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Errorf("concurrent send failed: %v", err)
+	}
 
 	saved, err := config.Load(cfgPath)
 	if err != nil {

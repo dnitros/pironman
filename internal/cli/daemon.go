@@ -275,6 +275,22 @@ func runOLEDTicker(ctx context.Context, machine *oled.Machine, done chan<- struc
 	}
 }
 
+// startOLEDTickLoop starts the tick loop under its own cancellable context,
+// independent of ctx: Serve can return with ctx still live (e.g. a
+// non-cancellation Accept error), and the returned shutdown hook must still
+// be able to stop the tick loop itself before the caller blanks the display,
+// rather than depending on ctx already being Done.
+func startOLEDTickLoop(ctx context.Context, machine *oled.Machine) (shutdown func() error) {
+	tickCtx, cancelTick := context.WithCancel(ctx)
+	tickerDone := make(chan struct{})
+	go runOLEDTicker(tickCtx, machine, tickerDone)
+	return func() error {
+		cancelTick()
+		<-tickerDone
+		return nil
+	}
+}
+
 func runDaemon(ctx context.Context) error {
 	cfgPath := config.Path()
 	cfg, err := config.Load(cfgPath)
@@ -310,17 +326,11 @@ func runDaemon(ctx context.Context) error {
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// The ticker gets its own cancellation, independent of ctx: Serve can
-	// return with ctx still live (e.g. a non-cancellation Accept error), and
-	// shutdown must still be able to stop the tick loop before blanking.
-	tickCtx, cancelTick := context.WithCancel(ctx)
-	defer cancelTick()
-	tickerDone := make(chan struct{})
-	go runOLEDTicker(tickCtx, oledMachine, tickerDone)
+	stopOLEDTicker := startOLEDTickLoop(ctx, oledMachine)
 
 	fmt.Printf("pironman daemon listening on %s\n", path)
 	return serveDaemon(ctx, srv,
-		func() error { cancelTick(); <-tickerDone; return nil }, // stop the tick loop before blanking
+		stopOLEDTicker, // stop the tick loop before blanking
 		func() error { return oledMachine.Off() },
 		func() error {
 			_, err := rgbStore.Off()
