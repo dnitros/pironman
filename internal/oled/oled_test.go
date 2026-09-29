@@ -433,6 +433,22 @@ func TestSetPagePerformanceFetchesAndRendersStats(t *testing.T) {
 	}
 }
 
+func TestSetPageStubPageRendersEvenWhenStatsErrors(t *testing.T) {
+	display := &fakeDisplay{}
+	stats := &fakeStats{err: errBoom}
+	m, err := oled.NewMachine(display, stats, newFakeClock(), defaultPages(), 10*time.Second, 3*time.Second, false)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+
+	if err := m.SetPage(oled.PageIPs); err != nil {
+		t.Fatalf("expected the stub ips page to render without touching stats, got: %v", err)
+	}
+	if state := m.State(); !state.Awake || state.Page != oled.PageIPs {
+		t.Fatalf("State() = %+v, want awake on %q", state, oled.PageIPs)
+	}
+}
+
 func TestSetPagePerformancePropagatesStatsError(t *testing.T) {
 	display := &fakeDisplay{}
 	stats := &fakeStats{err: errBoom}
