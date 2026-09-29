@@ -424,6 +424,23 @@ func TestTickScrollsIPsPageToNextGroupOfThreeAfterScrollInterval(t *testing.T) {
 	}
 }
 
+func TestComingSoonPageDoesNotReadStats(t *testing.T) {
+	display := &fakeDisplay{}
+	stats := &fakeStats{err: errBoom}
+	m, err := oled.NewMachine(display, stats, newFakeClock(), defaultPages(), 10*time.Second, 3*time.Second, false)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+	callsBefore := stats.calls
+
+	if err := m.SetPage(oled.PagePerformance); err != nil {
+		t.Fatalf("SetPage: %v", err)
+	}
+	if stats.calls != callsBefore {
+		t.Fatalf("expected a coming-soon page not to read stats, calls = %d, want %d", stats.calls, callsBefore)
+	}
+}
+
 func TestAwakeStatePersistsAcrossSimulatedRestart(t *testing.T) {
 	display := &fakeDisplay{}
 	m, err := oled.NewMachine(display, &fakeStats{}, newFakeClock(), defaultPages(), 10*time.Second, 3*time.Second, true)
