@@ -10,13 +10,12 @@ import (
 	"github.com/dnitros/pironman/internal/rgb"
 )
 
-func RGBHandlers(store *rgb.Store, cfg *config.Config, cfgPath string) map[string]ipc.Handler {
-	var opMu sync.Mutex
+func RGBHandlers(store *rgb.Store, cfg *config.Config, cfgPath string, cfgMu *sync.Mutex) map[string]ipc.Handler {
 	return map[string]ipc.Handler{
-		"rgb.on":         rgbSetHandler(store, cfg, cfgPath, &opMu, true),
-		"rgb.off":        rgbSetHandler(store, cfg, cfgPath, &opMu, false),
-		"rgb.color":      rgbColorHandler(store, cfg, cfgPath, &opMu),
-		"rgb.brightness": rgbBrightnessHandler(store, cfg, cfgPath, &opMu),
+		"rgb.on":         rgbSetHandler(store, cfg, cfgPath, cfgMu, true),
+		"rgb.off":        rgbSetHandler(store, cfg, cfgPath, cfgMu, false),
+		"rgb.color":      rgbColorHandler(store, cfg, cfgPath, cfgMu),
+		"rgb.brightness": rgbBrightnessHandler(store, cfg, cfgPath, cfgMu),
 	}
 }
 

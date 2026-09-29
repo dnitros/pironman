@@ -13,6 +13,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newDoctorCmd())
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newRGBCmd())
+	root.AddCommand(newOLEDCmd())
 	root.AddCommand(newStatusCmd())
 
 	return root

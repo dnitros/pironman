@@ -7,7 +7,9 @@ import (
 	"maps"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -16,7 +18,9 @@ import (
 	"github.com/dnitros/pironman/internal/handlers"
 	"github.com/dnitros/pironman/internal/hardware"
 	"github.com/dnitros/pironman/internal/ipc"
+	"github.com/dnitros/pironman/internal/oled"
 	"github.com/dnitros/pironman/internal/rgb"
+	"github.com/dnitros/pironman/internal/sysstats"
 	"github.com/dnitros/pironman/internal/systemdunit"
 )
 
@@ -239,6 +243,47 @@ func newRGBStore(cfg config.Config) (*rgb.Store, error) {
 	return rgb.NewStore(strip, rgb.State{Enabled: cfg.RGB.Enabled, Color: cfg.RGB.Color, Brightness: cfg.RGB.Brightness})
 }
 
+func newOLEDMachine(cfg config.Config) (*oled.Machine, error) {
+	display, err := hardware.NewI2CSSD1306(hardware.I2CPort)
+	if err != nil {
+		return nil, fmt.Errorf("open SSD1306 display: %w", err)
+	}
+	stats := sysstats.NewProcSource(sysstats.DefaultStatPath, sysstats.DefaultThermalPath, sysstats.DefaultMemInfoPath)
+	return oled.NewMachine(display, stats, oled.RealClock{}, cfg.OLED.PageOrder,
+		time.Duration(cfg.OLED.SleepTimeoutSeconds)*time.Second,
+		time.Duration(cfg.OLED.ScrollIntervalSeconds)*time.Second,
+		cfg.OLED.Enabled)
+}
+
+func runOLEDTicker(ctx context.Context, machine *oled.Machine, done chan<- struct{}) {
+	defer close(done)
+
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := machine.Tick(); err != nil {
+				log.Printf("daemon: oled tick failed: %v", err)
+			}
+		}
+	}
+}
+
+func startOLEDTickLoop(ctx context.Context, machine *oled.Machine) (shutdown func() error) {
+	tickCtx, cancelTick := context.WithCancel(ctx)
+	tickerDone := make(chan struct{})
+	go runOLEDTicker(tickCtx, machine, tickerDone)
+	return func() error {
+		cancelTick()
+		<-tickerDone
+		return nil
+	}
+}
+
 func runDaemon(ctx context.Context) error {
 	cfgPath := config.Path()
 	cfg, err := config.Load(cfgPath)
@@ -252,10 +297,17 @@ func runDaemon(ctx context.Context) error {
 		return fmt.Errorf("apply initial RGB state: %w", err)
 	}
 
+	oledMachine, err := newOLEDMachine(cfg)
+	if err != nil {
+		return fmt.Errorf("apply initial OLED state: %w", err)
+	}
+
 	path := ipc.SocketPath()
 
+	var cfgMu sync.Mutex
 	handlerMap := map[string]ipc.Handler{"ping": handlePing, "status": handlers.StatusHandler(rgbStore)}
-	maps.Copy(handlerMap, handlers.RGBHandlers(rgbStore, &cfg, cfgPath))
+	maps.Copy(handlerMap, handlers.RGBHandlers(rgbStore, &cfg, cfgPath, &cfgMu))
+	maps.Copy(handlerMap, handlers.OLEDHandlers(oledMachine, &cfg, cfgPath, &cfgMu))
 
 	srv := ipc.NewServer(handlerMap)
 	if err := srv.Listen(path); err != nil {
@@ -265,11 +317,18 @@ func runDaemon(ctx context.Context) error {
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	stopOLEDTicker := startOLEDTickLoop(ctx, oledMachine)
+	defer stopOLEDTicker()
+
 	fmt.Printf("pironman daemon listening on %s\n", path)
-	return serveDaemon(ctx, srv, func() error {
-		_, err := rgbStore.Off()
-		return err
-	})
+	return serveDaemon(ctx, srv,
+		stopOLEDTicker,
+		func() error { return oledMachine.Off() },
+		func() error {
+			_, err := rgbStore.Off()
+			return err
+		},
+	)
 }
 
 func serveDaemon(ctx context.Context, srv *ipc.Server, shutdownHooks ...func() error) error {
