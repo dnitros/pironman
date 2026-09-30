@@ -89,7 +89,7 @@ The v1 `auto` threshold (67.5°C, matching the original's "Balanced" curve) is a
 
 | Component | Approach | Library / path | Why |
 |---|---|---|---|
-| GPIO (case-fan relay) | Library | `github.com/warthog618/go-gpiocdev v0.9.1` | Uses the Linux `gpiochip` character-device ABI, which RP1 exposes; tries `gpiochip4` → `gpiochip0` → `gpiochip1`, matching Pi 5's enumeration. Legacy `/dev/gpiomem`-based libraries (`periph.io`'s GPIO layer, `stianeikeland/go-rpio`) are not RP1-safe and are excluded. |
+| GPIO (case-fan relay) | Library | `github.com/warthog618/go-gpiocdev v0.9.1` | Uses the Linux `gpiochip` character-device ABI, which RP1 exposes. Which `/dev/gpiochipN` number the RP1 header-GPIO chip lands on varies by kernel/OS image (confirmed on real Pi 5 hardware: it landed on `gpiochip15`, not the originally guessed `gpiochip4`/`0`/`1`), so the relay's line is resolved by its kernel-assigned name (`gpiocdev.FindLine("GPIO6")`) instead of a chip number. Legacy `/dev/gpiomem`-based libraries (`periph.io`'s GPIO layer, `stianeikeland/go-rpio`) are not RP1-safe and are excluded. |
 | I2C bus (OLED) | Library | `periph.io/x/conn/v3` + `periph.io/x/host/v3` (`i2creg`) | I2C character-device access (`/dev/i2c-1`) is unaffected by the RP1 GPIO-register change. |
 | SPI bus (WS2812) | Library | `periph.io/x/conn/v3` (`spireg`) | Same rationale and package family as the I2C pick — one fewer dependency to justify. |
 | SSD1306 driver | Hand-rolled | raw `periph` `i2c.Dev` + init/command sequence | Both the original Python implementation and the existing Go port independently hand-wrote this against the raw bus rather than using a third-party driver — confirms it's simple and stable enough not to need one. Pi 5/RP1 compatibility isn't explicitly documented for this approach; verify on-device in Phase 2 (see section 8). |
@@ -116,7 +116,7 @@ The v1 `auto` threshold (67.5°C, matching the original's "Balanced" curve) is a
 `status` gains OLED page/sleep-state fields. `doctor` gains an I2C-enabled check (`/dev/i2c-1` existence), plus a separate convenience check for whether `i2c-tools` (`i2cdetect`) is installed — not something pironman needs at runtime (it talks to the bus directly via `periph.io`), just useful for a human debugging further.
 
 **Phase 3 — Case-fan base.** On/off, plus `auto` at the fixed 67.5°C threshold (section 4). Surfaces the PWM fan's (Pi 5's own cooler) read-only state/speed via `status`.
-*Done when*: `pironman fan on|off` toggles the relay; `pironman fan auto` turns the relay on above 67.5°C and off below a hysteresis band (exact band TBD on-device — flagged risk, section 8); `pironman status` shows both the case fan's state and the PWM fan's read-only speed/state.
+*Done when*: `pironman fan on|off` toggles the relay; `pironman fan auto` turns the relay on above 67.5°C and off below 62.5°C (confirmed against the `pm_auto` source and verified on-device); `pironman status` shows both the case fan's state and the PWM fan's read-only speed/state.
 
 **Phase 4 — Power-button base.** Press-event classification via evdev (click / double-click / long-press / long-press-released — see `CONTEXT.md`), wired to Phase 2's OLED API and to shutdown. No reboot action — the original hardware doesn't have one in its default map.
 *Done when*: on physical hardware, a short press advances the OLED (waking it if asleep); a double-click goes to the previous page; a long press shows a shutdown-confirmation screen; releasing after a long press shuts the Pi down.

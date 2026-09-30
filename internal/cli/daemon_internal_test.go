@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dnitros/pironman/internal/fan"
 	"github.com/dnitros/pironman/internal/groupaccess"
 	"github.com/dnitros/pironman/internal/ipc"
 	"github.com/dnitros/pironman/internal/oled"
@@ -417,6 +418,47 @@ func TestShutdownDoesNotDeadlockWhenServeReturnsWithCtxStillLive(t *testing.T) {
 	defer cancel()
 
 	stopTicker := startOLEDTickLoop(ctx, machine)
+
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		srv.Close()
+	}()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- serveDaemon(ctx, srv, stopTicker)
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatalf("expected serveDaemon to propagate the Accept error triggered by closing the listener")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("serveDaemon deadlocked: the shutdown hook never returned")
+	}
+}
+
+type fakeFanRelay struct{}
+
+func (fakeFanRelay) Set(on bool) error { return nil }
+
+type fakeFanStatsSource struct{}
+
+func (fakeFanStatsSource) Snapshot() (sysstats.Snapshot, error) { return sysstats.Snapshot{}, nil }
+
+func TestFanShutdownDoesNotDeadlockWhenServeReturnsWithCtxStillLive(t *testing.T) {
+	srv := newTestIPCServer(t)
+
+	machine, err := fan.NewMachine(fakeFanRelay{}, fakeFanStatsSource{}, fan.ModeAuto)
+	if err != nil {
+		t.Fatalf("fan.NewMachine: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	stopTicker := startFanTickLoop(ctx, machine)
 
 	go func() {
 		time.Sleep(20 * time.Millisecond)
