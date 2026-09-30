@@ -89,7 +89,11 @@ type EvdevPowerButtonWatcher struct {
 // Devices are opened via syscall.Open, not os.OpenFile, and the fd is kept
 // around separately rather than fetched later via (*os.File).Fd: calling Fd
 // permanently forces a file into blocking mode, which would make Next's
-// blocking Read un-interruptible by a concurrent Close.
+// blocking Read un-interruptible by a concurrent Close. For the same reason,
+// the winning fd is set non-blocking before being wrapped in os.NewFile:
+// os.NewFile only registers a wrapped fd with the runtime poller (the thing
+// that makes Read interruptible by Close) if the fd is already non-blocking
+// when wrapped — it doesn't set that itself the way os.OpenFile does.
 func NewEvdevPowerButtonWatcher() (*EvdevPowerButtonWatcher, error) {
 	entries, err := os.ReadDir(inputDevicesDir)
 	if err != nil {
@@ -116,6 +120,10 @@ func NewEvdevPowerButtonWatcher() (*EvdevPowerButtonWatcher, error) {
 		if err := grab(uintptr(fd), true); err != nil {
 			_ = syscall.Close(fd)
 			return nil, fmt.Errorf("grab power-button device %s: %w", path, err)
+		}
+		if err := syscall.SetNonblock(fd, true); err != nil {
+			_ = syscall.Close(fd)
+			return nil, fmt.Errorf("set power-button device %s non-blocking: %w", path, err)
 		}
 		return &EvdevPowerButtonWatcher{file: os.NewFile(uintptr(fd), path), fd: uintptr(fd)}, nil
 	}
