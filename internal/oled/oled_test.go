@@ -516,6 +516,133 @@ func TestSetPagePerformancePropagatesStatsError(t *testing.T) {
 	}
 }
 
+func TestShowShutdownConfirmationRendersNonBlankScreen(t *testing.T) {
+	display := &fakeDisplay{}
+	m, err := oled.NewMachine(display, &fakeStats{}, newFakeClock(), defaultPages(), 10*time.Second, 3*time.Second, true)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+
+	if err := m.ShowShutdownConfirmation(); err != nil {
+		t.Fatalf("ShowShutdownConfirmation: %v", err)
+	}
+	if allZero(display.lastFrame()) {
+		t.Fatalf("expected a non-blank shutdown-confirmation screen")
+	}
+}
+
+func TestShowShutdownConfirmationIsIdempotentWhileHeld(t *testing.T) {
+	display := &fakeDisplay{}
+	m, err := oled.NewMachine(display, &fakeStats{}, newFakeClock(), defaultPages(), 10*time.Second, 3*time.Second, true)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+
+	if err := m.ShowShutdownConfirmation(); err != nil {
+		t.Fatalf("ShowShutdownConfirmation: %v", err)
+	}
+	first := display.lastFrame()
+
+	for i := 0; i < 3; i++ {
+		if err := m.ShowShutdownConfirmation(); err != nil {
+			t.Fatalf("repeated ShowShutdownConfirmation #%d: %v", i, err)
+		}
+		if !bytes.Equal(display.lastFrame(), first) {
+			t.Fatalf("expected repeated firing to re-render the same screen, got different content on call #%d", i)
+		}
+	}
+}
+
+func TestTickDoesNotAlterShutdownConfirmationScreen(t *testing.T) {
+	display := &fakeDisplay{}
+	clock := newFakeClock()
+	m, err := oled.NewMachine(display, &fakeStats{}, clock, defaultPages(), 10*time.Second, 3*time.Second, true)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+
+	if err := m.ShowShutdownConfirmation(); err != nil {
+		t.Fatalf("ShowShutdownConfirmation: %v", err)
+	}
+	confirming := display.lastFrame()
+
+	clock.Advance(time.Hour)
+	if err := m.Tick(); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+	if !bytes.Equal(display.lastFrame(), confirming) {
+		t.Fatalf("expected Tick() to leave the shutdown-confirmation screen untouched (no sleep-timeout blanking, no scroll)")
+	}
+}
+
+func TestShowPoweringOffRendersDistinctScreen(t *testing.T) {
+	display := &fakeDisplay{}
+	m, err := oled.NewMachine(display, &fakeStats{}, newFakeClock(), defaultPages(), 10*time.Second, 3*time.Second, true)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+
+	if err := m.ShowShutdownConfirmation(); err != nil {
+		t.Fatalf("ShowShutdownConfirmation: %v", err)
+	}
+	confirming := display.lastFrame()
+
+	if err := m.ShowPoweringOff(); err != nil {
+		t.Fatalf("ShowPoweringOff: %v", err)
+	}
+	poweringOff := display.lastFrame()
+
+	if allZero(poweringOff) {
+		t.Fatalf("expected a non-blank powering-off screen")
+	}
+	if bytes.Equal(poweringOff, confirming) {
+		t.Fatalf("expected the powering-off screen to be visually distinct from the shutdown-confirmation screen")
+	}
+}
+
+func TestOffNoOpsDuringPoweringOff(t *testing.T) {
+	display := &fakeDisplay{}
+	m, err := oled.NewMachine(display, &fakeStats{}, newFakeClock(), defaultPages(), 10*time.Second, 3*time.Second, true)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+
+	if err := m.ShowPoweringOff(); err != nil {
+		t.Fatalf("ShowPoweringOff: %v", err)
+	}
+	poweringOff := display.lastFrame()
+	framesBefore := len(display.frames)
+
+	if err := m.Off(); err != nil {
+		t.Fatalf("Off: %v", err)
+	}
+	if len(display.frames) != framesBefore {
+		t.Fatalf("expected Off() to be a true no-op while powering off, got %d new draw(s)", len(display.frames)-framesBefore)
+	}
+	if !bytes.Equal(display.lastFrame(), poweringOff) {
+		t.Fatalf("expected the powering-off screen to remain visible through Off()")
+	}
+}
+
+func TestOffBlanksDuringShutdownConfirmation(t *testing.T) {
+	display := &fakeDisplay{}
+	m, err := oled.NewMachine(display, &fakeStats{}, newFakeClock(), defaultPages(), 10*time.Second, 3*time.Second, true)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+
+	if err := m.ShowShutdownConfirmation(); err != nil {
+		t.Fatalf("ShowShutdownConfirmation: %v", err)
+	}
+
+	if err := m.Off(); err != nil {
+		t.Fatalf("Off: %v", err)
+	}
+	if !allZero(display.lastFrame()) {
+		t.Fatalf("expected Off() to blank the display when only showing shutdown-confirmation, not powering-off")
+	}
+}
+
 func TestTickPropagatesStatsError(t *testing.T) {
 	display := &fakeDisplay{}
 	stats := &fakeStats{err: errBoom}
