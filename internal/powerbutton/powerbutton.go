@@ -4,6 +4,7 @@
 package powerbutton
 
 import (
+	"sync"
 	"time"
 
 	"github.com/dnitros/pironman/internal/clock"
@@ -36,8 +37,12 @@ const (
 // Classifier is a pure state machine: it has no dependency on OLED, shutdown,
 // or any other domain package, and consumes raw transitions from a
 // hardware.PowerButtonWatcher via PressDown/PressUp, plus a periodic Tick for
-// its time-driven checks.
+// its time-driven checks. The daemon calls PressDown/PressUp and Tick from
+// two different goroutines (the watcher and the ticker), so state is
+// mutex-guarded like the sibling fan.Machine/oled.Machine tick-driven types.
 type Classifier struct {
+	mu sync.Mutex
+
 	clk    clock.Clock
 	phase  phase
 	downAt time.Time
@@ -52,6 +57,9 @@ func NewClassifier(clk clock.Clock) *Classifier {
 // the now-confirmed click in case Tick hasn't caught up yet, so a click is
 // never dropped regardless of tick cadence, and starts tracking this press.
 func (c *Classifier) PressDown() Event {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	now := c.clk.Now()
 
 	if c.phase == phasePendingClick {
@@ -70,6 +78,9 @@ func (c *Classifier) PressDown() Event {
 }
 
 func (c *Classifier) PressUp() Event {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	now := c.clk.Now()
 
 	switch c.phase {
@@ -93,6 +104,9 @@ func (c *Classifier) PressUp() Event {
 // long-press threshold (level-triggered, matching the original hardware's
 // firing behavior).
 func (c *Classifier) Tick() Event {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	now := c.clk.Now()
 
 	switch c.phase {

@@ -483,6 +483,18 @@ func TestDispatchPowerButtonEventDoubleClickGoesToPreviousPage(t *testing.T) {
 	}
 }
 
+func TestDispatchPowerButtonEventDoubleClickIsNoOpWhileAsleep(t *testing.T) {
+	machine := newFakeOLEDMachine(t, []string{oled.PageMix, oled.PagePerformance}, false)
+	before := machine.State()
+
+	if err := dispatchPowerButtonEvent(powerbutton.EventDoubleClick, machine); err != nil {
+		t.Fatalf("dispatchPowerButtonEvent: %v", err)
+	}
+	if got := machine.State(); got != before {
+		t.Fatalf("expected double-click to be a no-op while asleep, got %+v (was %+v)", got, before)
+	}
+}
+
 func TestDispatchPowerButtonEventLongPressIsANoOp(t *testing.T) {
 	for _, event := range []powerbutton.Event{powerbutton.EventNone, powerbutton.EventLongPress, powerbutton.EventLongPressReleased} {
 		machine := newFakeOLEDMachine(t, []string{oled.PageMix, oled.PagePerformance}, false)

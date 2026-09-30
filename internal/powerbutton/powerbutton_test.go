@@ -1,9 +1,11 @@
 package powerbutton_test
 
 import (
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/dnitros/pironman/internal/clock"
 	"github.com/dnitros/pironman/internal/powerbutton"
 )
 
@@ -113,6 +115,46 @@ func TestClassifierLongPressReleasedHasNoUpperBound(t *testing.T) {
 	if got := c.PressUp(); got != powerbutton.EventLongPressReleased {
 		t.Fatalf("PressUp after a very long hold: got %v, want EventLongPressReleased", got)
 	}
+}
+
+// TestClassifierIsSafeForConcurrentPressAndTick guards against the exact
+// shape the daemon drives the classifier in: PressDown/PressUp from the
+// watcher goroutine and Tick from the ticker goroutine, at the same time.
+// It uses the real clock, since it's only checking for data races (run with
+// -race), not classification timing (covered by the tests above).
+func TestClassifierIsSafeForConcurrentPressAndTick(t *testing.T) {
+	c := powerbutton.NewClassifier(clock.RealClock{})
+	stop := make(chan struct{})
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				c.PressDown()
+				c.PressUp()
+			}
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				c.Tick()
+			}
+		}
+	}()
+
+	time.Sleep(20 * time.Millisecond)
+	close(stop)
+	wg.Wait()
 }
 
 func TestClassifierShortPressReleasedBeforeThresholdIsNotLongPress(t *testing.T) {
