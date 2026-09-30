@@ -263,7 +263,7 @@ func newFanMachine(cfg config.Config) (*fan.Machine, error) {
 		return nil, fmt.Errorf("open case-fan relay: %w", err)
 	}
 	stats := sysstats.NewProcSource(sysstats.DefaultStatPath, sysstats.DefaultThermalPath, sysstats.DefaultMemInfoPath, sysstats.DefaultMountsPath)
-	return fan.NewMachine(relay, stats, clock.RealClock{}, cfg.Fan.CaseFanState)
+	return fan.NewMachine(relay, stats, cfg.Fan.CaseFanState)
 }
 
 func runOLEDTicker(ctx context.Context, machine *oled.Machine, done chan<- struct{}) {

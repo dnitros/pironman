@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/dnitros/pironman/internal/config"
 	"github.com/dnitros/pironman/internal/fan"
@@ -36,14 +35,10 @@ func (f *fakeFanStats) Snapshot() (sysstats.Snapshot, error) {
 	return sysstats.Snapshot{CPUTempC: f.tempC}, nil
 }
 
-type fixedFanClock struct{ t time.Time }
-
-func (f fixedFanClock) Now() time.Time { return f.t }
-
 func newTestFanMachine(t *testing.T, mode string) (*fan.Machine, *fakeRelay) {
 	t.Helper()
 	relay := &fakeRelay{}
-	m, err := fan.NewMachine(relay, &fakeFanStats{tempC: 50}, fixedFanClock{t: time.Now()}, mode)
+	m, err := fan.NewMachine(relay, &fakeFanStats{tempC: 50}, mode)
 	if err != nil {
 		t.Fatalf("fan.NewMachine: %v", err)
 	}
@@ -108,7 +103,7 @@ func TestFanHandlersOffPersistsStateAndCallsRelay(t *testing.T) {
 
 func TestFanHandlersAutoPersistsStateAndEvaluatesTemperature(t *testing.T) {
 	relay := &fakeRelay{}
-	machine, err := fan.NewMachine(relay, &fakeFanStats{tempC: 70}, fixedFanClock{t: time.Now()}, fan.ModeOff)
+	machine, err := fan.NewMachine(relay, &fakeFanStats{tempC: 70}, fan.ModeOff)
 	if err != nil {
 		t.Fatalf("fan.NewMachine: %v", err)
 	}
@@ -168,7 +163,7 @@ func TestFanHandlersPropagatesPersistErrorWithoutTouchingRelay(t *testing.T) {
 
 func TestFanHandlersCommitsPersistedStateEvenWhenRelayFails(t *testing.T) {
 	relay := &fakeRelay{}
-	m, err := fan.NewMachine(relay, &fakeFanStats{tempC: 50}, fixedFanClock{t: time.Now()}, fan.ModeOff)
+	m, err := fan.NewMachine(relay, &fakeFanStats{tempC: 50}, fan.ModeOff)
 	if err != nil {
 		t.Fatalf("fan.NewMachine: %v", err)
 	}

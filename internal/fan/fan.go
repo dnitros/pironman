@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/dnitros/pironman/internal/clock"
 	"github.com/dnitros/pironman/internal/hardware"
 	"github.com/dnitros/pironman/internal/sysstats"
 )
@@ -30,13 +29,12 @@ type Machine struct {
 
 	relay hardware.Relay
 	stats sysstats.Source
-	clock clock.Clock
 
 	mode    string
 	relayOn bool
 }
 
-func NewMachine(relay hardware.Relay, stats sysstats.Source, clk clock.Clock, initialMode string) (*Machine, error) {
+func NewMachine(relay hardware.Relay, stats sysstats.Source, initialMode string) (*Machine, error) {
 	if !validMode(initialMode) {
 		return nil, fmt.Errorf("fan: invalid mode %q", initialMode)
 	}
@@ -44,7 +42,6 @@ func NewMachine(relay hardware.Relay, stats sysstats.Source, clk clock.Clock, in
 	m := &Machine{
 		relay: relay,
 		stats: stats,
-		clock: clk,
 		mode:  initialMode,
 	}
 	if err := m.applyLocked(); err != nil {
