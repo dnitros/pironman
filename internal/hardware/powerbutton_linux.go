@@ -15,8 +15,7 @@ import (
 const (
 	inputDevicesDir = "/dev/input"
 
-	evKey    = 0x01
-	keyPower = 116
+	evKey = 0x01
 
 	keyBitmapBytes = 96
 )
@@ -49,7 +48,7 @@ func hasKeyPower(fd uintptr) (bool, error) {
 	if err := ioctl(fd, req, unsafe.Pointer(&bits[0])); err != nil {
 		return false, fmt.Errorf("EVIOCGBIT(EV_KEY): %w", err)
 	}
-	return bits[keyPower/8]&(1<<uint(keyPower%8)) != 0, nil
+	return bits[KeyPowerCode/8]&(1<<uint(KeyPowerCode%8)) != 0, nil
 }
 
 func grab(fd uintptr, on bool) error {
@@ -118,7 +117,7 @@ func (w *EvdevPowerButtonWatcher) Next() (PowerButtonEvent, error) {
 		if err := binary.Read(w.file, binary.LittleEndian, &ev); err != nil {
 			return PowerButtonEvent{}, fmt.Errorf("read power-button event: %w", err)
 		}
-		if ev.Type != evKey || ev.Code != keyPower {
+		if ev.Type != evKey || ev.Code != KeyPowerCode {
 			continue
 		}
 

@@ -2,6 +2,8 @@ package hardware
 
 import "time"
 
+const KeyPowerCode = 116
+
 type PowerButtonEvent struct {
 	Pressed bool
 	At      time.Time
