@@ -1,18 +1,23 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"image"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/dnitros/pironman/internal/clock"
 	"github.com/dnitros/pironman/internal/fan"
 	"github.com/dnitros/pironman/internal/groupaccess"
+	"github.com/dnitros/pironman/internal/hardware"
 	"github.com/dnitros/pironman/internal/ipc"
 	"github.com/dnitros/pironman/internal/oled"
+	"github.com/dnitros/pironman/internal/powerbutton"
 	"github.com/dnitros/pironman/internal/rgb"
 	"github.com/dnitros/pironman/internal/sysstats"
 )
@@ -393,9 +398,25 @@ func TestServeDaemonRunsRemainingHooksWhenOneFails(t *testing.T) {
 	}
 }
 
-type fakeOLEDDisplay struct{}
+type fakeOLEDDisplay struct {
+	frames [][]byte
+	err    error
+}
 
-func (fakeOLEDDisplay) Draw(img *image.Gray) error { return nil }
+func (f *fakeOLEDDisplay) Draw(img *image.Gray) error {
+	if f.err != nil {
+		return f.err
+	}
+	f.frames = append(f.frames, append([]byte(nil), img.Pix...))
+	return nil
+}
+
+func (f *fakeOLEDDisplay) lastFrame() []byte {
+	if len(f.frames) == 0 {
+		return nil
+	}
+	return f.frames[len(f.frames)-1]
+}
 
 type fakeOLEDStatsSource struct{}
 
@@ -408,7 +429,7 @@ func (f fixedOLEDClock) Now() time.Time { return f.t }
 func TestShutdownDoesNotDeadlockWhenServeReturnsWithCtxStillLive(t *testing.T) {
 	srv := newTestIPCServer(t)
 
-	machine, err := oled.NewMachine(fakeOLEDDisplay{}, fakeOLEDStatsSource{}, fixedOLEDClock{t: time.Now()},
+	machine, err := oled.NewMachine(&fakeOLEDDisplay{}, fakeOLEDStatsSource{}, fixedOLEDClock{t: time.Now()},
 		[]string{oled.PageMix}, 10*time.Second, 3*time.Second, true)
 	if err != nil {
 		t.Fatalf("oled.NewMachine: %v", err)
@@ -446,6 +467,194 @@ func (fakeFanRelay) Set(on bool) error { return nil }
 type fakeFanStatsSource struct{}
 
 func (fakeFanStatsSource) Snapshot() (sysstats.Snapshot, error) { return sysstats.Snapshot{}, nil }
+
+func newFakeOLEDMachine(t *testing.T, pages []string, initialAwake bool) (*oled.Machine, *fakeOLEDDisplay) {
+	t.Helper()
+	display := &fakeOLEDDisplay{}
+	machine, err := oled.NewMachine(display, fakeOLEDStatsSource{}, fixedOLEDClock{t: time.Now()},
+		pages, 10*time.Second, 3*time.Second, initialAwake)
+	if err != nil {
+		t.Fatalf("oled.NewMachine: %v", err)
+	}
+	return machine, display
+}
+
+func newFakeShutdowner() *fakeShutdowner { return &fakeShutdowner{} }
+
+type fakeShutdowner struct {
+	called bool
+	err    error
+}
+
+func (f *fakeShutdowner) Shutdown() error {
+	f.called = true
+	return f.err
+}
+
+func TestDispatchPowerButtonEventClickWakesAndAdvancesOLED(t *testing.T) {
+	machine, _ := newFakeOLEDMachine(t, []string{oled.PageMix, oled.PagePerformance}, false)
+
+	if err := dispatchPowerButtonEvent(powerbutton.EventClick, machine, newFakeShutdowner()); err != nil {
+		t.Fatalf("dispatchPowerButtonEvent: %v", err)
+	}
+	if !machine.State().Awake {
+		t.Fatalf("expected EventClick to wake the OLED")
+	}
+}
+
+func TestDispatchPowerButtonEventDoubleClickGoesToPreviousPage(t *testing.T) {
+	machine, _ := newFakeOLEDMachine(t, []string{oled.PageMix, oled.PagePerformance}, true)
+
+	if err := dispatchPowerButtonEvent(powerbutton.EventDoubleClick, machine, newFakeShutdowner()); err != nil {
+		t.Fatalf("dispatchPowerButtonEvent: %v", err)
+	}
+	if got := machine.State().Page; got != oled.PagePerformance {
+		t.Fatalf("expected double-click to move to the previous page, got %q", got)
+	}
+}
+
+func TestDispatchPowerButtonEventDoubleClickIsNoOpWhileAsleep(t *testing.T) {
+	machine, _ := newFakeOLEDMachine(t, []string{oled.PageMix, oled.PagePerformance}, false)
+	before := machine.State()
+
+	if err := dispatchPowerButtonEvent(powerbutton.EventDoubleClick, machine, newFakeShutdowner()); err != nil {
+		t.Fatalf("dispatchPowerButtonEvent: %v", err)
+	}
+	if got := machine.State(); got != before {
+		t.Fatalf("expected double-click to be a no-op while asleep, got %+v (was %+v)", got, before)
+	}
+}
+
+func TestDispatchPowerButtonEventNoneIsANoOp(t *testing.T) {
+	machine, _ := newFakeOLEDMachine(t, []string{oled.PageMix, oled.PagePerformance}, false)
+	before := machine.State()
+
+	if err := dispatchPowerButtonEvent(powerbutton.EventNone, machine, newFakeShutdowner()); err != nil {
+		t.Fatalf("dispatchPowerButtonEvent: %v", err)
+	}
+	if got := machine.State(); got != before {
+		t.Fatalf("expected EventNone to be a no-op, got %+v (was %+v)", got, before)
+	}
+}
+
+func TestDispatchPowerButtonEventLongPressShowsShutdownConfirmation(t *testing.T) {
+	machine, display := newFakeOLEDMachine(t, []string{oled.PageMix, oled.PagePerformance}, true)
+	shutdowner := newFakeShutdowner()
+
+	if err := dispatchPowerButtonEvent(powerbutton.EventLongPress, machine, shutdowner); err != nil {
+		t.Fatalf("dispatchPowerButtonEvent: %v", err)
+	}
+	if display.lastFrame() == nil {
+		t.Fatalf("expected EventLongPress to render a screen")
+	}
+	if shutdowner.called {
+		t.Fatalf("expected EventLongPress to not invoke shutdown")
+	}
+}
+
+func TestDispatchPowerButtonEventLongPressIsIdempotentWhileHeld(t *testing.T) {
+	machine, display := newFakeOLEDMachine(t, []string{oled.PageMix, oled.PagePerformance}, true)
+	shutdowner := newFakeShutdowner()
+
+	if err := dispatchPowerButtonEvent(powerbutton.EventLongPress, machine, shutdowner); err != nil {
+		t.Fatalf("dispatchPowerButtonEvent: %v", err)
+	}
+	first := display.lastFrame()
+
+	for i := 0; i < 3; i++ {
+		if err := dispatchPowerButtonEvent(powerbutton.EventLongPress, machine, shutdowner); err != nil {
+			t.Fatalf("repeated dispatchPowerButtonEvent #%d: %v", i, err)
+		}
+		if !bytes.Equal(display.lastFrame(), first) {
+			t.Fatalf("expected repeated EventLongPress firing to re-render the same screen, got different content on call #%d", i)
+		}
+	}
+	if shutdowner.called {
+		t.Fatalf("expected repeated EventLongPress to never invoke shutdown")
+	}
+}
+
+func TestDispatchPowerButtonEventLongPressReleasedShowsPoweringOffAndShutsDown(t *testing.T) {
+	machine, display := newFakeOLEDMachine(t, []string{oled.PageMix, oled.PagePerformance}, true)
+	shutdowner := newFakeShutdowner()
+
+	if err := dispatchPowerButtonEvent(powerbutton.EventLongPress, machine, shutdowner); err != nil {
+		t.Fatalf("dispatchPowerButtonEvent(EventLongPress): %v", err)
+	}
+	confirming := display.lastFrame()
+
+	if err := dispatchPowerButtonEvent(powerbutton.EventLongPressReleased, machine, shutdowner); err != nil {
+		t.Fatalf("dispatchPowerButtonEvent(EventLongPressReleased): %v", err)
+	}
+	if !shutdowner.called {
+		t.Fatalf("expected EventLongPressReleased to invoke shutdown")
+	}
+	if bytes.Equal(display.lastFrame(), confirming) {
+		t.Fatalf("expected the powering-off screen to be visually distinct from the shutdown-confirmation screen")
+	}
+}
+
+func TestDispatchPowerButtonEventLongPressReleasedShutsDownEvenIfRenderFails(t *testing.T) {
+	machine, display := newFakeOLEDMachine(t, []string{oled.PageMix, oled.PagePerformance}, true)
+	shutdowner := newFakeShutdowner()
+	display.err = errBoom
+
+	err := dispatchPowerButtonEvent(powerbutton.EventLongPressReleased, machine, shutdowner)
+	if err == nil {
+		t.Fatalf("expected the render error to propagate")
+	}
+	if !shutdowner.called {
+		t.Fatalf("expected Shutdown() to still be invoked even though rendering failed")
+	}
+}
+
+type fakePowerButtonWatcher struct {
+	events chan hardware.PowerButtonEvent
+	closed chan struct{}
+	once   sync.Once
+}
+
+func newFakePowerButtonWatcher() *fakePowerButtonWatcher {
+	return &fakePowerButtonWatcher{
+		events: make(chan hardware.PowerButtonEvent),
+		closed: make(chan struct{}),
+	}
+}
+
+func (f *fakePowerButtonWatcher) Next() (hardware.PowerButtonEvent, error) {
+	select {
+	case ev := <-f.events:
+		return ev, nil
+	case <-f.closed:
+		return hardware.PowerButtonEvent{}, errBoom
+	}
+}
+
+func (f *fakePowerButtonWatcher) Close() error {
+	f.once.Do(func() { close(f.closed) })
+	return nil
+}
+
+func TestPowerButtonWatchLoopStopsCleanlyOnShutdown(t *testing.T) {
+	watcher := newFakePowerButtonWatcher()
+	classifier := powerbutton.NewClassifier(clock.RealClock{})
+	machine, _ := newFakeOLEDMachine(t, []string{oled.PageMix}, false)
+
+	stop := startPowerButtonWatchLoop(watcher, classifier, machine, newFakeShutdowner())
+
+	done := make(chan error, 1)
+	go func() { done <- stop() }()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("power-button watch loop deadlocked: shutdown never returned")
+	}
+
+	if err := stop(); err != nil {
+		t.Fatalf("second stop() call: %v", err)
+	}
+}
 
 func TestFanShutdownDoesNotDeadlockWhenServeReturnsWithCtxStillLive(t *testing.T) {
 	srv := newTestIPCServer(t)

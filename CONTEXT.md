@@ -17,7 +17,7 @@ Cycling automatically, on a fixed timer, through multiple values displayed *with
 _Avoid_: auto-cycle, page rotation
 
 **Press event**:
-One of four classified power-button interactions, each mapped to a fixed action: `click` (OLED wake/page-advance-next), `double-click` (page-advance-previous), `long-press` (show shutdown-confirmation screen), `long-press-released` (shutdown).
+One of four classified power-button interactions, each mapped to a fixed action: `click` (OLED wake/page-advance-next), `double-click` (page-advance-previous), `long-press` (show shutdown-confirmation screen), `long-press-released` (show powering-off screen, then shutdown).
 _Avoid_: button press, tap
 
 **PWM fan**:

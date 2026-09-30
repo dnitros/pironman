@@ -39,7 +39,8 @@ internal/
         ws2812.go        — hand-rolled WS2812 SPI bit-encoder
         ssd1306.go       — hand-rolled SSD1306 driver
         pwmfan.go        — sysfs read-only telemetry
-        evdev.go         — go-evdev power-button watcher
+        powerbutton_linux.go — hand-rolled evdev reader (stdlib syscall only)
+        shutdowner.go    — shells out to `shutdown -h now`
     rgb/                 — RGB domain logic against a hardware.WS2812 interface
     oled/                — page state machine: advance/previous/sleep/content-scroll
     fan/                 — case-fan on/off/auto/mode logic + PWM-fan reading
@@ -95,7 +96,7 @@ The v1 `auto` threshold (67.5°C, matching the original's "Balanced" curve) is a
 | SSD1306 driver | Hand-rolled | raw `periph` `i2c.Dev` + init/command sequence | Both the original Python implementation and the existing Go port independently hand-wrote this against the raw bus rather than using a third-party driver — confirms it's simple and stable enough not to need one. Pi 5/RP1 compatibility isn't explicitly documented for this approach; verify on-device in Phase 2 (see section 8). |
 | WS2812 driver | Hand-rolled | SPI bit-encoder over `periph` `spi.Conn`, ~2.4 MHz clock | No maintained Go WS2812 library exists. The existing Go port's `EncodeWS2812GRB` is a working reference for the bit-encoding technique (not to be copied verbatim). |
 | PWM-fan telemetry (read-only) | No library | `os.ReadFile` on `/sys/class/thermal/cooling_device0/cur_state` and the matching `hwmon*/fan1_input` | Plain sysfs reads — matches both reference implementations exactly. |
-| Power button | Library | `github.com/holoplot/go-evdev` | Pure Go, no cgo, actively maintained. `gvalkov/golang-evdev` is unmaintained and its author is looking for a new owner. No tagged releases yet — pin the exact commit pseudo-version in `go.mod` and revisit if a tag appears. |
+| Power button | Hand-rolled | stdlib `syscall` — `EVIOCGBIT`/`EVIOCGRAB` via the documented Linux ioctl-encoding macro, plus raw `input_event` reads | `github.com/holoplot/go-evdev` was evaluated (pure Go, actively maintained) but rejected: the ~3 primitives actually needed (open, one capability-check ioctl, one grab ioctl) don't justify pulling in ~600 lines of unused ioctl wrappers (uinput, force-feedback, LED/SND/SW) with no tagged release to pin against. |
 | CLI framework | Library | `spf13/cobra` (version to be confirmed via context7 at implementation time) | The CLI surface is a genuine nested-subcommand tree (`daemon {install,uninstall,start,stop}`, `rgb {...}`, `oled {...}`, `fan {...}`); cobra removes the boilerplate stdlib `flag` would otherwise require, and is the de facto standard for this shape of tool. |
 
 ## 6. Delivery phases
@@ -128,7 +129,7 @@ The v1 `auto` threshold (67.5°C, matching the original's "Balanced" curve) is a
 
 ## 7. Testing / validation strategy
 
-No CI hardware access, so every hardware boundary in `internal/hardware/*` is a small interface (`Relay`, `PWMFanReader`, `WS2812Strip`, `SSD1306Display`, `PowerButtonWatcher`). `rgb`/`oled`/`fan`/`powerbutton` are unit-tested entirely against hand-rolled fakes of these interfaces — no mocking library, since each interface is a handful of methods and hand-writing a fake is less code than adopting and learning a generator. The IPC protocol (`internal/ipc`) is tested with a real Unix socket in a temp directory (or `net.Pipe` for the framing logic alone) — no real daemon process needed.
+No CI hardware access, so every hardware boundary in `internal/hardware/*` is a small interface (`Relay`, `PWMFanReader`, `WS2812Strip`, `SSD1306Display`, `PowerButtonWatcher`, `Shutdowner`). `rgb`/`oled`/`fan`/`powerbutton`/`cli` are unit-tested entirely against hand-rolled fakes of these interfaces — no mocking library, since each interface is a handful of methods and hand-writing a fake is less code than adopting and learning a generator. The IPC protocol (`internal/ipc`) is tested with a real Unix socket in a temp directory (or `net.Pipe` for the framing logic alone) — no real daemon process needed.
 
 Manual on-device verification checklist, one per phase, run against the actual Pi 5 + case:
 - **Phase 0**: install/start/stop/uninstall the systemd unit; confirm socket permissions (`root:pironman`, `0660`) and that a non-root user in the `pironman` group can run `doctor`.
@@ -141,7 +142,6 @@ Manual on-device verification checklist, one per phase, run against the actual P
 
 - **Fan hysteresis band is unspecified.** The original's level-based comparison (`level >= mode`) likely has separate on/off boundaries per band to avoid relay chatter, but the exact band wasn't extracted from the source. Assumption: derive a reasonable hysteresis (e.g. ±2–3°C) during Phase 3 implementation and confirm on-device; not blocking the plan, but flagged so it isn't silently guessed at implementation time.
 - **SSD1306 Pi 5/RP1 compatibility is unconfirmed by documentation.** Both reference implementations use it successfully via `periph.io`'s I2C layer, which is itself RP1-safe, but no source explicitly confirms the SSD1306 driver code path on a Pi 5. Verify on-device in Phase 2 (section 6/7).
-- **`go-evdev` has no tagged release** — only commit pseudo-versions. Pin an exact commit in `go.mod`; revisit if the library gains a stable tag.
 - **Reference material path correction**: `PROMPT.md` names `~/dev/dnitros/original-pironman5/`, which doesn't exist. The actual local repos are `~/dev/dnitros/pironman5` (CLI/daemon wrapper) and `~/dev/dnitros/pm_auto` (hardware library) — worth fixing in the task doc for future reference.
 - **PWM-fan control fallback**: `pm_auto` has a fallback path where it writes to the PWM fan on non-stock OSes where the kernel doesn't already govern it. This plan assumes stock Raspberry Pi OS, where the PWM fan is always read-only from this tool's side, per the fixed architecture constraint. If that assumption is wrong for the target install, the PWM-fan telemetry design in section 5/6 needs revisiting.
 - **Config schema is a first draft.** Field names/shape will likely shift once Phase 0 scaffolding is underway; not treated as a compatibility-locked contract yet.

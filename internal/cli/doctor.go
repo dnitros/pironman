@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"os/user"
 	"strconv"
+	"strings"
 	"syscall"
 	"text/tabwriter"
 
@@ -19,6 +20,13 @@ import (
 
 const spiDevPath = "/dev/spidev0.0"
 const i2cDevPath = "/dev/i2c-1"
+const inputDevicesPath = "/proc/bus/input/devices"
+
+const (
+	keyLinePrefix = "B: KEY="
+	keyPowerCode  = 116
+	bitsPerWord   = 64
+)
 
 type DoctorInfo struct {
 	PlatformSupported bool
@@ -33,6 +41,7 @@ type DoctorInfo struct {
 	SPIEnabled        bool
 	I2CEnabled        bool
 	I2CToolsInstalled bool
+	PowerButtonFound  bool
 }
 
 func newDoctorCmd() *cobra.Command {
@@ -40,7 +49,7 @@ func newDoctorCmd() *cobra.Command {
 		Use:   "doctor",
 		Short: "Show daemon reachability, install/running state, socket permissions, and config readability",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			info, err := gatherDoctor(ipc.SocketPath(), systemdunit.NewManager(), config.Path(), spiDevPath, i2cDevPath)
+			info, err := gatherDoctor(ipc.SocketPath(), systemdunit.NewManager(), config.Path(), spiDevPath, i2cDevPath, inputDevicesPath)
 			if err != nil {
 				return err
 			}
@@ -50,7 +59,7 @@ func newDoctorCmd() *cobra.Command {
 	}
 }
 
-func gatherDoctor(socketPath string, mgr systemdunit.Manager, cfgPath string, spiPath string, i2cPath string) (DoctorInfo, error) {
+func gatherDoctor(socketPath string, mgr systemdunit.Manager, cfgPath string, spiPath string, i2cPath string, inputPath string) (DoctorInfo, error) {
 	supported := mgr.IsSupported()
 
 	var installed, active bool
@@ -82,12 +91,40 @@ func gatherDoctor(socketPath string, mgr systemdunit.Manager, cfgPath string, sp
 		SPIEnabled:        devPathExists(spiPath),
 		I2CEnabled:        devPathExists(i2cPath),
 		I2CToolsInstalled: i2cToolsInstalled(),
+		PowerButtonFound:  powerButtonDeviceFound(inputPath),
 	}, nil
 }
 
 func devPathExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+func powerButtonDeviceFound(path string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		value, ok := strings.CutPrefix(strings.TrimSpace(line), keyLinePrefix)
+		if ok && hasKeyPowerCapability(value) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasKeyPowerCapability(value string) bool {
+	words := strings.Fields(value)
+	idx := len(words) - 1 - keyPowerCode/bitsPerWord
+	if idx < 0 {
+		return false
+	}
+	bits, err := strconv.ParseUint(words[idx], 16, 64)
+	if err != nil {
+		return false
+	}
+	return bits&(1<<uint(keyPowerCode%bitsPerWord)) != 0
 }
 
 func i2cToolsInstalled() bool {
@@ -170,5 +207,6 @@ func printDoctor(info DoctorInfo) {
 	fmt.Fprintf(w, "  SPI enabled:\t%t\n", info.SPIEnabled)
 	fmt.Fprintf(w, "  I2C enabled:\t%t\n", info.I2CEnabled)
 	fmt.Fprintf(w, "  i2c-tools installed:\t%t\n", info.I2CToolsInstalled)
+	fmt.Fprintf(w, "  power button device found:\t%t\n", info.PowerButtonFound)
 	w.Flush()
 }

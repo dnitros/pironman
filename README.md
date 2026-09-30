@@ -16,7 +16,7 @@ The CLI and daemon talk over a Unix domain socket (default `/run/pironman/pironm
 PIRONMAN_SOCKET_PATH=/tmp/pironman.sock ./pironman doctor
 ```
 
-`daemon run` opens the Pironman 5's WS2812 RGB strip over SPI, SSD1306 OLED over I2C, and case-fan relay over a GPIO character device at startup, so it only runs on the actual case hardware with those interfaces available — it can't be smoke-tested standalone on a dev machine anymore. `internal/hardware`, `internal/rgb`, `internal/oled`, and `internal/fan` are unit-tested against hand-rolled fakes instead (see `go test` below).
+`daemon run` opens the Pironman 5's WS2812 RGB strip over SPI, SSD1306 OLED over I2C, case-fan relay over a GPIO character device, and the power button over `/dev/input` (evdev) at startup, so it only runs on the actual case hardware with those interfaces available — it can't be smoke-tested standalone on a dev machine anymore. `internal/hardware`, `internal/rgb`, `internal/oled`, `internal/fan`, and `internal/powerbutton` are unit-tested against hand-rolled fakes instead (see `go test` below).
 
 Run tests with:
 

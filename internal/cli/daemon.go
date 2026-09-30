@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"maps"
@@ -21,6 +22,7 @@ import (
 	"github.com/dnitros/pironman/internal/hardware"
 	"github.com/dnitros/pironman/internal/ipc"
 	"github.com/dnitros/pironman/internal/oled"
+	"github.com/dnitros/pironman/internal/powerbutton"
 	"github.com/dnitros/pironman/internal/rgb"
 	"github.com/dnitros/pironman/internal/sysstats"
 	"github.com/dnitros/pironman/internal/systemdunit"
@@ -266,6 +268,85 @@ func newFanMachine(cfg config.Config) (*fan.Machine, error) {
 	return fan.NewMachine(relay, stats, cfg.Fan.CaseFanState)
 }
 
+const powerButtonTickInterval = 50 * time.Millisecond
+
+func dispatchPowerButtonEvent(event powerbutton.Event, oledMachine *oled.Machine, shutdowner hardware.Shutdowner) error {
+	switch event {
+	case powerbutton.EventClick:
+		return oledMachine.Advance()
+	case powerbutton.EventDoubleClick:
+		return oledMachine.Previous()
+	case powerbutton.EventLongPress:
+		return oledMachine.ShowShutdownConfirmation()
+	case powerbutton.EventLongPressReleased:
+		renderErr := oledMachine.ShowPoweringOff()
+		shutdownErr := shutdowner.Shutdown()
+		return errors.Join(renderErr, shutdownErr)
+	default:
+		return nil
+	}
+}
+
+func runPowerButtonWatcher(watcher hardware.PowerButtonWatcher, classifier *powerbutton.Classifier, oledMachine *oled.Machine, shutdowner hardware.Shutdowner, done chan<- struct{}) {
+	defer close(done)
+
+	for {
+		ev, err := watcher.Next()
+		if err != nil {
+			return
+		}
+
+		var event powerbutton.Event
+		if ev.Pressed {
+			event = classifier.PressDown()
+		} else {
+			event = classifier.PressUp()
+		}
+		if err := dispatchPowerButtonEvent(event, oledMachine, shutdowner); err != nil {
+			log.Printf("daemon: power-button dispatch failed: %v", err)
+		}
+	}
+}
+
+func startPowerButtonWatchLoop(watcher hardware.PowerButtonWatcher, classifier *powerbutton.Classifier, oledMachine *oled.Machine, shutdowner hardware.Shutdowner) (shutdown func() error) {
+	done := make(chan struct{})
+	go runPowerButtonWatcher(watcher, classifier, oledMachine, shutdowner, done)
+	return func() error {
+		err := watcher.Close()
+		<-done
+		return err
+	}
+}
+
+func runPowerButtonTicker(ctx context.Context, classifier *powerbutton.Classifier, oledMachine *oled.Machine, shutdowner hardware.Shutdowner, done chan<- struct{}) {
+	defer close(done)
+
+	ticker := time.NewTicker(powerButtonTickInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := dispatchPowerButtonEvent(classifier.Tick(), oledMachine, shutdowner); err != nil {
+				log.Printf("daemon: power-button tick dispatch failed: %v", err)
+			}
+		}
+	}
+}
+
+func startPowerButtonTickLoop(ctx context.Context, classifier *powerbutton.Classifier, oledMachine *oled.Machine, shutdowner hardware.Shutdowner) (shutdown func() error) {
+	tickCtx, cancelTick := context.WithCancel(ctx)
+	tickerDone := make(chan struct{})
+	go runPowerButtonTicker(tickCtx, classifier, oledMachine, shutdowner, tickerDone)
+	return func() error {
+		cancelTick()
+		<-tickerDone
+		return nil
+	}
+}
+
 func runOLEDTicker(ctx context.Context, machine *oled.Machine, done chan<- struct{}) {
 	defer close(done)
 
@@ -347,6 +428,13 @@ func runDaemon(ctx context.Context) error {
 		return fmt.Errorf("apply initial fan state: %w", err)
 	}
 
+	powerButtonWatcher, err := hardware.NewEvdevPowerButtonWatcher()
+	if err != nil {
+		return fmt.Errorf("open power-button watcher: %w", err)
+	}
+	powerButtonClassifier := powerbutton.NewClassifier(clock.RealClock{})
+	shutdowner := hardware.SystemShutdowner{}
+
 	path := ipc.SocketPath()
 
 	pwmFanReader := hardware.NewSysPWMFanReader(hardware.PWMFanCoolingStatePath, hardware.PWMFanHwmonFanInputGlob)
@@ -371,10 +459,18 @@ func runDaemon(ctx context.Context) error {
 	stopFanTicker := startFanTickLoop(ctx, fanMachine)
 	defer stopFanTicker()
 
+	stopPowerButtonWatch := startPowerButtonWatchLoop(powerButtonWatcher, powerButtonClassifier, oledMachine, shutdowner)
+	defer stopPowerButtonWatch()
+
+	stopPowerButtonTicker := startPowerButtonTickLoop(ctx, powerButtonClassifier, oledMachine, shutdowner)
+	defer stopPowerButtonTicker()
+
 	fmt.Printf("pironman daemon listening on %s\n", path)
 	return serveDaemon(ctx, srv,
 		stopOLEDTicker,
 		stopFanTicker,
+		stopPowerButtonWatch,
+		stopPowerButtonTicker,
 		func() error { return oledMachine.Off() },
 		func() error { return fanMachine.Off() },
 		func() error {
