@@ -267,9 +267,6 @@ func newFanMachine(cfg config.Config) (*fan.Machine, error) {
 	return fan.NewMachine(relay, stats, cfg.Fan.CaseFanState)
 }
 
-// powerButtonTickInterval is short relative to OLED/fan's 1s tick loops so
-// the classifier's 250ms double-click window and long-press threshold are
-// resolved with negligible added latency.
 const powerButtonTickInterval = 50 * time.Millisecond
 
 func dispatchPowerButtonEvent(event powerbutton.Event, oledMachine *oled.Machine) error {
@@ -304,10 +301,6 @@ func runPowerButtonWatcher(watcher hardware.PowerButtonWatcher, classifier *powe
 	}
 }
 
-// startPowerButtonWatchLoop starts the blocking-read watcher goroutine. Unlike
-// the tick loops, it has no ctx.Done() case to select on: watcher.Next()
-// blocks in a syscall, so the returned shutdown func stops it by closing the
-// device, which unblocks Next with an error.
 func startPowerButtonWatchLoop(watcher hardware.PowerButtonWatcher, classifier *powerbutton.Classifier, oledMachine *oled.Machine) (shutdown func() error) {
 	done := make(chan struct{})
 	go runPowerButtonWatcher(watcher, classifier, oledMachine, done)

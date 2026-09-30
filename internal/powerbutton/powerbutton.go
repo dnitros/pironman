@@ -1,6 +1,3 @@
-// Package powerbutton classifies raw power-button press/release transitions
-// into the four CONTEXT.md press events: click, double-click, long-press,
-// and long-press-released.
 package powerbutton
 
 import (
@@ -34,12 +31,6 @@ const (
 	phasePendingClick
 )
 
-// Classifier is a pure state machine: it has no dependency on OLED, shutdown,
-// or any other domain package, and consumes raw transitions from a
-// hardware.PowerButtonWatcher via PressDown/PressUp, plus a periodic Tick for
-// its time-driven checks. The daemon calls PressDown/PressUp and Tick from
-// two different goroutines (the watcher and the ticker), so state is
-// mutex-guarded like the sibling fan.Machine/oled.Machine tick-driven types.
 type Classifier struct {
 	mu sync.Mutex
 
@@ -52,10 +43,6 @@ func NewClassifier(clk clock.Clock) *Classifier {
 	return &Classifier{clk: clk, phase: phaseIdle}
 }
 
-// PressDown supersedes a pending click into a double-click if it arrives
-// within the debounce window of the first press-down. Otherwise it flushes
-// the now-confirmed click in case Tick hasn't caught up yet, so a click is
-// never dropped regardless of tick cadence, and starts tracking this press.
 func (c *Classifier) PressDown() Event {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -99,10 +86,6 @@ func (c *Classifier) PressUp() Event {
 	}
 }
 
-// Tick confirms a pending click once its debounce window expires, and
-// re-fires EventLongPress on every call while the button stays held past the
-// long-press threshold (level-triggered, matching the original hardware's
-// firing behavior).
 func (c *Classifier) Tick() Event {
 	c.mu.Lock()
 	defer c.mu.Unlock()

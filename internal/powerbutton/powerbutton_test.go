@@ -31,8 +31,6 @@ func TestClassifierConfirmsClickAfterDebounceWindowElapses(t *testing.T) {
 		t.Fatalf("PressUp: got %v, want EventNone (click is provisional)", got)
 	}
 
-	// The debounce window is measured from the press-down, not the release
-	// (50ms elapsed already), so only advance up to just under the total.
 	clk.Advance(powerbutton.DebounceWindow - 50*time.Millisecond - time.Millisecond)
 	if got := c.Tick(); got != powerbutton.EventNone {
 		t.Fatalf("Tick before window elapses: got %v, want EventNone", got)
@@ -117,11 +115,6 @@ func TestClassifierLongPressReleasedHasNoUpperBound(t *testing.T) {
 	}
 }
 
-// TestClassifierIsSafeForConcurrentPressAndTick guards against the exact
-// shape the daemon drives the classifier in: PressDown/PressUp from the
-// watcher goroutine and Tick from the ticker goroutine, at the same time.
-// It uses the real clock, since it's only checking for data races (run with
-// -race), not classification timing (covered by the tests above).
 func TestClassifierIsSafeForConcurrentPressAndTick(t *testing.T) {
 	c := powerbutton.NewClassifier(clock.RealClock{})
 	stop := make(chan struct{})

@@ -552,8 +552,6 @@ func TestPowerButtonWatchLoopStopsCleanlyOnShutdown(t *testing.T) {
 		t.Fatalf("power-button watch loop deadlocked: shutdown never returned")
 	}
 
-	// Idempotent: the daemon's shutdown sequence may call the same stop
-	// func again (defer plus the shutdown-hook list).
 	if err := stop(); err != nil {
 		t.Fatalf("second stop() call: %v", err)
 	}
