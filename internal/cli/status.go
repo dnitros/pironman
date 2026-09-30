@@ -11,11 +11,15 @@ import (
 )
 
 type StatusInfo struct {
-	Enabled    bool
-	Color      string
-	Brightness int
-	OLEDAwake  bool
-	OLEDPage   string
+	Enabled        bool
+	Color          string
+	Brightness     int
+	OLEDAwake      bool
+	OLEDPage       string
+	CaseFanMode    string
+	CaseFanRelayOn bool
+	PWMFanLevel    int
+	PWMFanSpeedRPM int
 }
 
 func newStatusCmd() *cobra.Command {
@@ -48,10 +52,16 @@ func gatherStatus(socketPath string) (StatusInfo, error) {
 	brightness, _ := data["brightness"].(float64)
 	oledAwake, _ := data["oled_awake"].(bool)
 	oledPage, _ := data["oled_page"].(string)
+	caseFanMode, _ := data["case_fan_mode"].(string)
+	caseFanRelayOn, _ := data["case_fan_relay_on"].(bool)
+	pwmFanLevel, _ := data["pwm_fan_level"].(float64)
+	pwmFanSpeedRPM, _ := data["pwm_fan_speed_rpm"].(float64)
 
 	return StatusInfo{
 		Enabled: enabled, Color: color, Brightness: int(brightness),
 		OLEDAwake: oledAwake, OLEDPage: oledPage,
+		CaseFanMode: caseFanMode, CaseFanRelayOn: caseFanRelayOn,
+		PWMFanLevel: int(pwmFanLevel), PWMFanSpeedRPM: int(pwmFanSpeedRPM),
 	}, nil
 }
 
@@ -66,5 +76,15 @@ func printStatus(info StatusInfo) {
 	fmt.Println("OLED")
 	fmt.Fprintf(w, "  awake:\t%t\n", info.OLEDAwake)
 	fmt.Fprintf(w, "  page:\t%s\n", info.OLEDPage)
+	w.Flush()
+
+	fmt.Println("Case fan")
+	fmt.Fprintf(w, "  mode:\t%s\n", info.CaseFanMode)
+	fmt.Fprintf(w, "  relay:\t%t\n", info.CaseFanRelayOn)
+	w.Flush()
+
+	fmt.Println("PWM fan")
+	fmt.Fprintf(w, "  level:\t%d\n", info.PWMFanLevel)
+	fmt.Fprintf(w, "  speed:\t%d RPM\n", info.PWMFanSpeedRPM)
 	w.Flush()
 }
