@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dnitros/pironman/internal/clock"
 	"github.com/dnitros/pironman/internal/hardware"
 	"github.com/dnitros/pironman/internal/sysstats"
 )
@@ -17,14 +18,6 @@ const (
 	PageDisk        = "disk"
 )
 
-type Clock interface {
-	Now() time.Time
-}
-
-type RealClock struct{}
-
-func (RealClock) Now() time.Time { return time.Now() }
-
 type State struct {
 	Awake bool
 	Page  string
@@ -35,7 +28,7 @@ type Machine struct {
 
 	display hardware.SSD1306Display
 	stats   sysstats.Source
-	clock   Clock
+	clock   clock.Clock
 
 	pages   []string
 	pageIdx int
@@ -49,16 +42,16 @@ type Machine struct {
 	scrollIdx    int
 }
 
-func NewMachine(display hardware.SSD1306Display, stats sysstats.Source, clock Clock, pages []string, sleepTimeout, scrollInterval time.Duration, initialAwake bool) (*Machine, error) {
+func NewMachine(display hardware.SSD1306Display, stats sysstats.Source, clk clock.Clock, pages []string, sleepTimeout, scrollInterval time.Duration, initialAwake bool) (*Machine, error) {
 	if len(pages) == 0 {
 		return nil, fmt.Errorf("oled: page order must not be empty")
 	}
 
-	now := clock.Now()
+	now := clk.Now()
 	m := &Machine{
 		display:        display,
 		stats:          stats,
-		clock:          clock,
+		clock:          clk,
 		pages:          pages,
 		sleepTimeout:   sleepTimeout,
 		scrollInterval: scrollInterval,

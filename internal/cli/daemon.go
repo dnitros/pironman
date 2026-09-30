@@ -13,7 +13,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/dnitros/pironman/internal/clock"
 	"github.com/dnitros/pironman/internal/config"
+	"github.com/dnitros/pironman/internal/fan"
 	"github.com/dnitros/pironman/internal/groupaccess"
 	"github.com/dnitros/pironman/internal/handlers"
 	"github.com/dnitros/pironman/internal/hardware"
@@ -249,10 +251,19 @@ func newOLEDMachine(cfg config.Config) (*oled.Machine, error) {
 		return nil, fmt.Errorf("open SSD1306 display: %w", err)
 	}
 	stats := sysstats.NewProcSource(sysstats.DefaultStatPath, sysstats.DefaultThermalPath, sysstats.DefaultMemInfoPath, sysstats.DefaultMountsPath)
-	return oled.NewMachine(display, stats, oled.RealClock{}, cfg.OLED.PageOrder,
+	return oled.NewMachine(display, stats, clock.RealClock{}, cfg.OLED.PageOrder,
 		time.Duration(cfg.OLED.SleepTimeoutSeconds)*time.Second,
 		time.Duration(cfg.OLED.ScrollIntervalSeconds)*time.Second,
 		cfg.OLED.Enabled)
+}
+
+func newFanMachine(cfg config.Config) (*fan.Machine, error) {
+	relay, err := hardware.NewGPIORelay(hardware.CaseFanRelayOffset)
+	if err != nil {
+		return nil, fmt.Errorf("open case-fan relay: %w", err)
+	}
+	stats := sysstats.NewProcSource(sysstats.DefaultStatPath, sysstats.DefaultThermalPath, sysstats.DefaultMemInfoPath, sysstats.DefaultMountsPath)
+	return fan.NewMachine(relay, stats, clock.RealClock{}, cfg.Fan.CaseFanState)
 }
 
 func runOLEDTicker(ctx context.Context, machine *oled.Machine, done chan<- struct{}) {
@@ -284,6 +295,35 @@ func startOLEDTickLoop(ctx context.Context, machine *oled.Machine) (shutdown fun
 	}
 }
 
+func runFanTicker(ctx context.Context, machine *fan.Machine, done chan<- struct{}) {
+	defer close(done)
+
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := machine.Tick(); err != nil {
+				log.Printf("daemon: fan tick failed: %v", err)
+			}
+		}
+	}
+}
+
+func startFanTickLoop(ctx context.Context, machine *fan.Machine) (shutdown func() error) {
+	tickCtx, cancelTick := context.WithCancel(ctx)
+	tickerDone := make(chan struct{})
+	go runFanTicker(tickCtx, machine, tickerDone)
+	return func() error {
+		cancelTick()
+		<-tickerDone
+		return nil
+	}
+}
+
 func runDaemon(ctx context.Context) error {
 	cfgPath := config.Path()
 	cfg, err := config.Load(cfgPath)
@@ -302,12 +342,18 @@ func runDaemon(ctx context.Context) error {
 		return fmt.Errorf("apply initial OLED state: %w", err)
 	}
 
+	fanMachine, err := newFanMachine(cfg)
+	if err != nil {
+		return fmt.Errorf("apply initial fan state: %w", err)
+	}
+
 	path := ipc.SocketPath()
 
 	var cfgMu sync.Mutex
 	handlerMap := map[string]ipc.Handler{"ping": handlePing, "status": handlers.StatusHandler(rgbStore, oledMachine)}
 	maps.Copy(handlerMap, handlers.RGBHandlers(rgbStore, &cfg, cfgPath, &cfgMu))
 	maps.Copy(handlerMap, handlers.OLEDHandlers(oledMachine, &cfg, cfgPath, &cfgMu))
+	maps.Copy(handlerMap, handlers.FanHandlers(fanMachine, &cfg, cfgPath, &cfgMu))
 
 	srv := ipc.NewServer(handlerMap)
 	if err := srv.Listen(path); err != nil {
@@ -320,10 +366,15 @@ func runDaemon(ctx context.Context) error {
 	stopOLEDTicker := startOLEDTickLoop(ctx, oledMachine)
 	defer stopOLEDTicker()
 
+	stopFanTicker := startFanTickLoop(ctx, fanMachine)
+	defer stopFanTicker()
+
 	fmt.Printf("pironman daemon listening on %s\n", path)
 	return serveDaemon(ctx, srv,
 		stopOLEDTicker,
+		stopFanTicker,
 		func() error { return oledMachine.Off() },
+		func() error { return fanMachine.Off() },
 		func() error {
 			_, err := rgbStore.Off()
 			return err

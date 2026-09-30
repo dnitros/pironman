@@ -14,6 +14,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newRGBCmd())
 	root.AddCommand(newOLEDCmd())
+	root.AddCommand(newFanCmd())
 	root.AddCommand(newStatusCmd())
 
 	return root
