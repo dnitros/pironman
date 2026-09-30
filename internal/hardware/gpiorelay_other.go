@@ -8,7 +8,7 @@ import "fmt"
 // ABI, so it can only be used when built for linux.
 type GPIORelay struct{}
 
-func NewGPIORelay(offset int) (*GPIORelay, error) {
+func NewGPIORelay(name string) (*GPIORelay, error) {
 	return nil, fmt.Errorf("case-fan relay: unsupported on this platform (linux required)")
 }
 

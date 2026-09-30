@@ -8,27 +8,18 @@ import (
 	"github.com/warthog618/go-gpiocdev"
 )
 
-// caseFanRelayChips are tried in order for RP1 compatibility across
-// Raspberry Pi OS versions.
-var caseFanRelayChips = []string{"gpiochip4", "gpiochip0", "gpiochip1"}
-
 type GPIORelay struct {
 	line *gpiocdev.Line
 }
 
-func NewGPIORelay(offset int) (*GPIORelay, error) {
-	var (
-		line *gpiocdev.Line
-		err  error
-	)
-	for _, chip := range caseFanRelayChips {
-		line, err = gpiocdev.RequestLine(chip, offset, gpiocdev.AsOutput(0))
-		if err == nil {
-			break
-		}
-	}
+func NewGPIORelay(name string) (*GPIORelay, error) {
+	chip, offset, err := gpiocdev.FindLine(name)
 	if err != nil {
-		return nil, fmt.Errorf("open relay line %d on %v: %w", offset, caseFanRelayChips, err)
+		return nil, fmt.Errorf("find GPIO line %q: %w", name, err)
+	}
+	line, err := gpiocdev.RequestLine(chip, offset, gpiocdev.AsOutput(0), gpiocdev.WithConsumer("pironman"))
+	if err != nil {
+		return nil, fmt.Errorf("open relay line %q (chip %s offset %d): %w", name, chip, offset, err)
 	}
 	return &GPIORelay{line: line}, nil
 }

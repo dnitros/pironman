@@ -258,7 +258,7 @@ func newOLEDMachine(cfg config.Config) (*oled.Machine, error) {
 }
 
 func newFanMachine(cfg config.Config) (*fan.Machine, error) {
-	relay, err := hardware.NewGPIORelay(hardware.CaseFanRelayOffset)
+	relay, err := hardware.NewGPIORelay(hardware.CaseFanRelayLine)
 	if err != nil {
 		return nil, fmt.Errorf("open case-fan relay: %w", err)
 	}
