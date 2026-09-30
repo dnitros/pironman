@@ -76,6 +76,7 @@ func grab(fd uintptr, on bool) error {
 
 type EvdevPowerButtonWatcher struct {
 	file *os.File
+	fd   uintptr
 
 	closeOnce sync.Once
 	closeErr  error
@@ -84,6 +85,11 @@ type EvdevPowerButtonWatcher struct {
 // NewEvdevPowerButtonWatcher scans /dev/input for a device whose EV_KEY
 // capability bitmap includes KEY_POWER and grabs it exclusively so nothing
 // else can read it concurrently.
+//
+// Devices are opened via syscall.Open, not os.OpenFile, and the fd is kept
+// around separately rather than fetched later via (*os.File).Fd: calling Fd
+// permanently forces a file into blocking mode, which would make Next's
+// blocking Read un-interruptible by a concurrent Close.
 func NewEvdevPowerButtonWatcher() (*EvdevPowerButtonWatcher, error) {
 	entries, err := os.ReadDir(inputDevicesDir)
 	if err != nil {
@@ -96,22 +102,22 @@ func NewEvdevPowerButtonWatcher() (*EvdevPowerButtonWatcher, error) {
 		}
 
 		path := inputDevicesDir + "/" + entry.Name()
-		file, err := os.OpenFile(path, os.O_RDWR, 0)
+		fd, err := syscall.Open(path, syscall.O_RDWR, 0)
 		if err != nil {
 			continue
 		}
 
-		ok, err := hasKeyPower(file.Fd())
+		ok, err := hasKeyPower(uintptr(fd))
 		if err != nil || !ok {
-			_ = file.Close()
+			_ = syscall.Close(fd)
 			continue
 		}
 
-		if err := grab(file.Fd(), true); err != nil {
-			_ = file.Close()
+		if err := grab(uintptr(fd), true); err != nil {
+			_ = syscall.Close(fd)
 			return nil, fmt.Errorf("grab power-button device %s: %w", path, err)
 		}
-		return &EvdevPowerButtonWatcher{file: file}, nil
+		return &EvdevPowerButtonWatcher{file: os.NewFile(uintptr(fd), path), fd: uintptr(fd)}, nil
 	}
 
 	return nil, fmt.Errorf("power-button input device not found (no device advertises KEY_POWER)")
@@ -155,7 +161,7 @@ func (w *EvdevPowerButtonWatcher) Next() (PowerButtonEvent, error) {
 // call should touch the device.
 func (w *EvdevPowerButtonWatcher) Close() error {
 	w.closeOnce.Do(func() {
-		if err := grab(w.file.Fd(), false); err != nil {
+		if err := grab(w.fd, false); err != nil {
 			_ = w.file.Close()
 			w.closeErr = fmt.Errorf("ungrab power-button device: %w", err)
 			return
