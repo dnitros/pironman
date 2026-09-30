@@ -349,8 +349,10 @@ func runDaemon(ctx context.Context) error {
 
 	path := ipc.SocketPath()
 
+	pwmFanReader := hardware.NewSysPWMFanReader(hardware.PWMFanCoolingStatePath, hardware.PWMFanHwmonFanInputGlob)
+
 	var cfgMu sync.Mutex
-	handlerMap := map[string]ipc.Handler{"ping": handlePing, "status": handlers.StatusHandler(rgbStore, oledMachine)}
+	handlerMap := map[string]ipc.Handler{"ping": handlePing, "status": handlers.StatusHandler(rgbStore, oledMachine, fanMachine, pwmFanReader)}
 	maps.Copy(handlerMap, handlers.RGBHandlers(rgbStore, &cfg, cfgPath, &cfgMu))
 	maps.Copy(handlerMap, handlers.OLEDHandlers(oledMachine, &cfg, cfgPath, &cfgMu))
 	maps.Copy(handlerMap, handlers.FanHandlers(fanMachine, &cfg, cfgPath, &cfgMu))
