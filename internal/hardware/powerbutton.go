@@ -2,7 +2,6 @@ package hardware
 
 import "time"
 
-// KeyPowerCode is the Linux input-event code for KEY_POWER (linux/input-event-codes.h).
 const KeyPowerCode = 116
 
 type PowerButtonEvent struct {
