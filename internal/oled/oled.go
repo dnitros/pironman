@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/dnitros/pironman/internal/clock"
+	"github.com/dnitros/pironman/internal/config"
 	"github.com/dnitros/pironman/internal/hardware"
 	"github.com/dnitros/pironman/internal/sysstats"
 )
@@ -76,6 +77,18 @@ func NewMachine(display hardware.SSD1306Display, stats sysstats.Source, clk cloc
 		return nil, fmt.Errorf("apply initial OLED state: %w", err)
 	}
 	return m, nil
+}
+
+func NewMachineFromConfig(cfg config.Config) (*Machine, error) {
+	display, err := hardware.NewI2CSSD1306(hardware.I2CPort)
+	if err != nil {
+		return nil, fmt.Errorf("open SSD1306 display: %w", err)
+	}
+	stats := sysstats.NewProcSource(sysstats.DefaultStatPath, sysstats.DefaultThermalPath, sysstats.DefaultMemInfoPath, sysstats.DefaultMountsPath)
+	return NewMachine(display, stats, clock.RealClock{}, cfg.OLED.PageOrder,
+		time.Duration(cfg.OLED.SleepTimeoutSeconds)*time.Second,
+		time.Duration(cfg.OLED.ScrollIntervalSeconds)*time.Second,
+		cfg.OLED.Enabled)
 }
 
 func (m *Machine) State() State {

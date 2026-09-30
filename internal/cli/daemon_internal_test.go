@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -438,7 +439,7 @@ func TestShutdownDoesNotDeadlockWhenServeReturnsWithCtxStillLive(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	stopTicker := startOLEDTickLoop(ctx, machine)
+	stopTicker := startTickLoop(ctx, time.Second, "oled", machine.Tick)
 
 	go func() {
 		time.Sleep(20 * time.Millisecond)
@@ -656,6 +657,52 @@ func TestPowerButtonWatchLoopStopsCleanlyOnShutdown(t *testing.T) {
 	}
 }
 
+func TestTickLoopInvokesTickRepeatedlyAndStopsCleanly(t *testing.T) {
+	var calls int32
+	stop := startTickLoop(context.Background(), time.Millisecond, "test", func() error {
+		atomic.AddInt32(&calls, 1)
+		return nil
+	})
+
+	deadline := time.Now().Add(2 * time.Second)
+	for atomic.LoadInt32(&calls) < 3 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if got := atomic.LoadInt32(&calls); got < 3 {
+		t.Fatalf("expected at least 3 tick calls, got %d", got)
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- stop() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("stop: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("tick loop deadlocked: stop never returned")
+	}
+}
+
+func TestTickLoopKeepsRunningAfterATickError(t *testing.T) {
+	var calls int32
+	stop := startTickLoop(context.Background(), time.Millisecond, "test", func() error {
+		if atomic.AddInt32(&calls, 1) == 1 {
+			return errBoom
+		}
+		return nil
+	})
+	defer stop()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for atomic.LoadInt32(&calls) < 2 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if got := atomic.LoadInt32(&calls); got < 2 {
+		t.Fatalf("expected the loop to keep ticking after an error, got %d calls", got)
+	}
+}
+
 func TestFanShutdownDoesNotDeadlockWhenServeReturnsWithCtxStillLive(t *testing.T) {
 	srv := newTestIPCServer(t)
 
@@ -667,7 +714,7 @@ func TestFanShutdownDoesNotDeadlockWhenServeReturnsWithCtxStillLive(t *testing.T
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	stopTicker := startFanTickLoop(ctx, machine)
+	stopTicker := startTickLoop(ctx, time.Second, "fan", machine.Tick)
 
 	go func() {
 		time.Sleep(20 * time.Millisecond)
