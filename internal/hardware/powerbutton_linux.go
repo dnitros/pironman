@@ -3,77 +3,142 @@
 package hardware
 
 import (
+	"encoding/binary"
 	"fmt"
+	"os"
 	"sync"
+	"syscall"
 	"time"
-
-	"github.com/holoplot/go-evdev"
+	"unsafe"
 )
 
+// Linux evdev device discovery, exclusive grab, and raw event reads,
+// hand-rolled against the documented kernel UAPI (linux/input.h,
+// linux/input-event-codes.h) rather than a third-party evdev library: the
+// only primitives this needs are one ioctl to check for KEY_POWER support,
+// one to grab the device, and reading fixed-size input_event records.
+
+const (
+	inputDevicesDir = "/dev/input"
+
+	evKey    = 0x01
+	keyPower = 116
+
+	// keyBitmapBytes covers key codes 0..767 (KEY_MAX, the highest code
+	// defined in linux/input-event-codes.h).
+	keyBitmapBytes = 96
+)
+
+// Linux's ioctl request numbers are encoded via the standard _IOC macro
+// (include/uapi/asm-generic/ioctl.h): a 2-bit direction, 14-bit size, 8-bit
+// type, and 8-bit number packed into a uint32. 'E' is evdev's ioctl type.
+const (
+	iocRead  = 2
+	iocWrite = 1
+
+	evdevIOCType = 'E'
+
+	eviocgbitEVKEYNr = 0x20 + evKey
+	eviocgrabNr      = 0x90
+)
+
+func ioctlCode(dir, nr int, size uintptr) uint32 {
+	return uint32(dir)<<30 | uint32(size)<<16 | uint32(evdevIOCType)<<8 | uint32(nr)
+}
+
+func ioctl(fd uintptr, req uint32, ptr unsafe.Pointer) error {
+	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, fd, uintptr(req), uintptr(ptr))
+	if errno != 0 {
+		return errno
+	}
+	return nil
+}
+
+// hasKeyPower reports whether the device's EV_KEY capability bitmap
+// (EVIOCGBIT) includes KEY_POWER.
+func hasKeyPower(fd uintptr) (bool, error) {
+	var bits [keyBitmapBytes]byte
+	req := ioctlCode(iocRead, eviocgbitEVKEYNr, unsafe.Sizeof(bits))
+	if err := ioctl(fd, req, unsafe.Pointer(&bits[0])); err != nil {
+		return false, fmt.Errorf("EVIOCGBIT(EV_KEY): %w", err)
+	}
+	return bits[keyPower/8]&(1<<uint(keyPower%8)) != 0, nil
+}
+
+func grab(fd uintptr, on bool) error {
+	var v int32
+	if on {
+		v = 1
+	}
+	req := ioctlCode(iocWrite, eviocgrabNr, unsafe.Sizeof(v))
+	return ioctl(fd, req, unsafe.Pointer(&v))
+}
+
 type EvdevPowerButtonWatcher struct {
-	dev *evdev.InputDevice
+	file *os.File
 
 	closeOnce sync.Once
 	closeErr  error
 }
 
-// NewEvdevPowerButtonWatcher scans the available input devices for one that
-// advertises KEY_POWER and grabs it exclusively so nothing else can read it
-// concurrently.
+// NewEvdevPowerButtonWatcher scans /dev/input for a device whose EV_KEY
+// capability bitmap includes KEY_POWER and grabs it exclusively so nothing
+// else can read it concurrently.
 func NewEvdevPowerButtonWatcher() (*EvdevPowerButtonWatcher, error) {
-	dev, err := findPowerButtonDevice()
+	entries, err := os.ReadDir(inputDevicesDir)
 	if err != nil {
-		return nil, err
-	}
-	if err := dev.Grab(); err != nil {
-		_ = dev.Close()
-		return nil, fmt.Errorf("grab power-button device: %w", err)
-	}
-	return &EvdevPowerButtonWatcher{dev: dev}, nil
-}
-
-func findPowerButtonDevice() (*evdev.InputDevice, error) {
-	paths, err := evdev.ListDevicePaths()
-	if err != nil {
-		return nil, fmt.Errorf("list input devices: %w", err)
+		return nil, fmt.Errorf("list %s: %w", inputDevicesDir, err)
 	}
 
-	for _, p := range paths {
-		dev, err := evdev.Open(p.Path)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		path := inputDevicesDir + "/" + entry.Name()
+		file, err := os.OpenFile(path, os.O_RDWR, 0)
 		if err != nil {
 			continue
 		}
-		if hasPowerKey(dev.CapableEvents(evdev.EV_KEY)) {
-			return dev, nil
+
+		ok, err := hasKeyPower(file.Fd())
+		if err != nil || !ok {
+			_ = file.Close()
+			continue
 		}
-		_ = dev.Close()
+
+		if err := grab(file.Fd(), true); err != nil {
+			_ = file.Close()
+			return nil, fmt.Errorf("grab power-button device %s: %w", path, err)
+		}
+		return &EvdevPowerButtonWatcher{file: file}, nil
 	}
 
 	return nil, fmt.Errorf("power-button input device not found (no device advertises KEY_POWER)")
 }
 
-func hasPowerKey(codes []evdev.EvCode) bool {
-	for _, c := range codes {
-		if c == evdev.KEY_POWER {
-			return true
-		}
-	}
-	return false
+// rawInputEvent mirrors the kernel's struct input_event on 64-bit Linux
+// (linux/input.h): a 16-byte struct timeval followed by type/code/value,
+// with no padding between fields.
+type rawInputEvent struct {
+	Sec, Usec  int64
+	Type, Code uint16
+	Value      int32
 }
 
 // Next blocks on the device until a KEY_POWER press or release, skipping
 // unrelated events and autorepeat (Value == 2).
 func (w *EvdevPowerButtonWatcher) Next() (PowerButtonEvent, error) {
 	for {
-		ev, err := w.dev.ReadOne()
-		if err != nil {
+		var ev rawInputEvent
+		if err := binary.Read(w.file, binary.LittleEndian, &ev); err != nil {
 			return PowerButtonEvent{}, fmt.Errorf("read power-button event: %w", err)
 		}
-		if ev.Type != evdev.EV_KEY || ev.Code != evdev.KEY_POWER {
+		if ev.Type != evKey || ev.Code != keyPower {
 			continue
 		}
 
-		at := time.Unix(int64(ev.Time.Sec), int64(ev.Time.Usec)*1000)
+		at := time.Unix(ev.Sec, ev.Usec*1000)
 		switch ev.Value {
 		case 1:
 			return PowerButtonEvent{Pressed: true, At: at}, nil
@@ -90,12 +155,12 @@ func (w *EvdevPowerButtonWatcher) Next() (PowerButtonEvent, error) {
 // call should touch the device.
 func (w *EvdevPowerButtonWatcher) Close() error {
 	w.closeOnce.Do(func() {
-		if err := w.dev.Ungrab(); err != nil {
-			_ = w.dev.Close()
+		if err := grab(w.file.Fd(), false); err != nil {
+			_ = w.file.Close()
 			w.closeErr = fmt.Errorf("ungrab power-button device: %w", err)
 			return
 		}
-		w.closeErr = w.dev.Close()
+		w.closeErr = w.file.Close()
 	})
 	return w.closeErr
 }
