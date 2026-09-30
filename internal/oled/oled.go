@@ -18,10 +18,21 @@ const (
 	PageDisk        = "disk"
 )
 
+var shutdownConfirmationLines = []string{"Hold to", "shut down"}
+var poweringOffLines = []string{"Powering off..."}
+
 type State struct {
 	Awake bool
 	Page  string
 }
+
+type terminalState int
+
+const (
+	terminalNone terminalState = iota
+	terminalShutdownConfirmation
+	terminalPoweringOff
+)
 
 type Machine struct {
 	mu sync.Mutex
@@ -40,6 +51,8 @@ type Machine struct {
 	lastActivity time.Time
 	lastScroll   time.Time
 	scrollIdx    int
+
+	terminal terminalState
 }
 
 func NewMachine(display hardware.SSD1306Display, stats sysstats.Source, clk clock.Clock, pages []string, sleepTimeout, scrollInterval time.Duration, initialAwake bool) (*Machine, error) {
@@ -79,7 +92,28 @@ func (m *Machine) Off() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if m.terminal == terminalPoweringOff {
+		return nil
+	}
+
+	m.terminal = terminalNone
 	m.awake = false
+	return m.renderLocked()
+}
+
+func (m *Machine) ShowShutdownConfirmation() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.terminal = terminalShutdownConfirmation
+	return m.renderLocked()
+}
+
+func (m *Machine) ShowPoweringOff() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.terminal = terminalPoweringOff
 	return m.renderLocked()
 }
 
@@ -134,6 +168,10 @@ func (m *Machine) Tick() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if m.terminal != terminalNone {
+		return nil
+	}
+
 	if !m.awake {
 		return nil
 	}
@@ -167,6 +205,13 @@ func indexOf(pages []string, name string) (int, bool) {
 }
 
 func (m *Machine) renderLocked() error {
+	switch m.terminal {
+	case terminalShutdownConfirmation:
+		return m.display.Draw(renderLines(shutdownConfirmationLines))
+	case terminalPoweringOff:
+		return m.display.Draw(renderLines(poweringOffLines))
+	}
+
 	if !m.awake {
 		return m.display.Draw(image.NewGray(image.Rect(0, 0, hardware.SSD1306Width, hardware.SSD1306Height)))
 	}
