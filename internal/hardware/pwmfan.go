@@ -60,8 +60,6 @@ func parsePWMFanInt(data []byte) (int, error) {
 	return strconv.Atoi(strings.TrimSpace(string(data)))
 }
 
-// The hwmon index isn't stable across kernel/OS images, so the input path is
-// resolved by glob rather than a fixed hwmonN path.
 func resolvePWMFanInputPath(glob string) (string, error) {
 	matches, err := filepath.Glob(glob)
 	if err != nil {
