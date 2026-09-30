@@ -15,8 +15,6 @@ const (
 	ModeAuto = "auto"
 )
 
-// Hysteresis band for auto mode, derived from pm_auto's MEDIUM/HIGH tier
-// boundary (the "Balanced" curve): on above 67.5°C, off below 62.5°C.
 const (
 	AutoOnThresholdC  = 67.5
 	AutoOffThresholdC = 62.5
@@ -32,9 +30,6 @@ type Machine struct {
 
 	relay hardware.Relay
 	stats sysstats.Source
-	// clock satisfies the shared Clock interface for test symmetry with
-	// rgb/oled; hysteresis here is temperature-driven, not time-driven, so
-	// nothing currently reads it.
 	clock clock.Clock
 
 	mode    string

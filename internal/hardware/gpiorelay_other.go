@@ -4,8 +4,6 @@ package hardware
 
 import "fmt"
 
-// GPIORelay's go-gpiocdev backend requires the Linux GPIO character-device
-// ABI, so it can only be used when built for linux.
 type GPIORelay struct{}
 
 func NewGPIORelay(name string) (*GPIORelay, error) {
