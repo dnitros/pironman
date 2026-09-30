@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/dnitros/pironman/internal/config"
+	"github.com/dnitros/pironman/internal/hardware"
 	"github.com/dnitros/pironman/internal/ipc"
 	"github.com/dnitros/pironman/internal/systemdunit"
 )
@@ -24,7 +25,6 @@ const inputDevicesPath = "/proc/bus/input/devices"
 
 const (
 	keyLinePrefix = "B: KEY="
-	keyPowerCode  = 116
 	bitsPerWord   = 64
 )
 
@@ -116,7 +116,7 @@ func powerButtonDeviceFound(path string) bool {
 
 func hasKeyPowerCapability(value string) bool {
 	words := strings.Fields(value)
-	idx := len(words) - 1 - keyPowerCode/bitsPerWord
+	idx := len(words) - 1 - hardware.KeyPowerCode/bitsPerWord
 	if idx < 0 {
 		return false
 	}
@@ -124,7 +124,7 @@ func hasKeyPowerCapability(value string) bool {
 	if err != nil {
 		return false
 	}
-	return bits&(1<<uint(keyPowerCode%bitsPerWord)) != 0
+	return bits&(1<<uint(hardware.KeyPowerCode%bitsPerWord)) != 0
 }
 
 func i2cToolsInstalled() bool {
