@@ -296,7 +296,7 @@ func runTickLoop(ctx context.Context, interval time.Duration, label string, tick
 			return
 		case <-ticker.C:
 			if err := tick(); err != nil {
-				log.Printf("daemon: %s tick failed: %v", label, err)
+				log.Printf("daemon: %s failed: %v", label, err)
 			}
 		}
 	}
@@ -321,17 +321,18 @@ func runDaemon(ctx context.Context) error {
 	}
 	fmt.Printf("pironman daemon: loaded config from %s\n", cfgPath)
 
-	rgbStore, err := rgb.NewStoreFromConfig(cfg)
+	rgbStore, err := rgb.NewConfiguredStore(cfg.RGB.Enabled, cfg.RGB.Color, cfg.RGB.Brightness)
 	if err != nil {
 		return fmt.Errorf("apply initial RGB state: %w", err)
 	}
 
-	oledMachine, err := oled.NewMachineFromConfig(cfg)
+	oledMachine, err := oled.NewConfiguredMachine(cfg.OLED.Enabled, cfg.OLED.PageOrder,
+		cfg.OLED.SleepTimeoutSeconds, cfg.OLED.ScrollIntervalSeconds)
 	if err != nil {
 		return fmt.Errorf("apply initial OLED state: %w", err)
 	}
 
-	fanMachine, err := fan.NewMachineFromConfig(cfg)
+	fanMachine, err := fan.NewConfiguredMachine(cfg.Fan.CaseFanState)
 	if err != nil {
 		return fmt.Errorf("apply initial fan state: %w", err)
 	}
@@ -361,16 +362,16 @@ func runDaemon(ctx context.Context) error {
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	stopOLEDTicker := startTickLoop(ctx, time.Second, "oled", oledMachine.Tick)
+	stopOLEDTicker := startTickLoop(ctx, time.Second, "oled tick", oledMachine.Tick)
 	defer stopOLEDTicker()
 
-	stopFanTicker := startTickLoop(ctx, time.Second, "fan", fanMachine.Tick)
+	stopFanTicker := startTickLoop(ctx, time.Second, "fan tick", fanMachine.Tick)
 	defer stopFanTicker()
 
 	stopPowerButtonWatch := startPowerButtonWatchLoop(powerButtonWatcher, powerButtonClassifier, oledMachine, shutdowner)
 	defer stopPowerButtonWatch()
 
-	stopPowerButtonTicker := startTickLoop(ctx, powerButtonTickInterval, "power-button", func() error {
+	stopPowerButtonTicker := startTickLoop(ctx, powerButtonTickInterval, "power-button tick dispatch", func() error {
 		return dispatchPowerButtonEvent(powerButtonClassifier.Tick(), oledMachine, shutdowner)
 	})
 	defer stopPowerButtonTicker()

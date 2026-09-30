@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/dnitros/pironman/internal/config"
 	"github.com/dnitros/pironman/internal/hardware"
 )
 
@@ -62,8 +61,8 @@ func NewStore(strip hardware.WS2812Strip, initial State) (*Store, error) {
 	return s, nil
 }
 
-func NewStoreFromConfig(cfg config.Config) (*Store, error) {
-	r, g, b, err := ScaledColor(cfg.RGB.Color, cfg.RGB.Brightness)
+func NewConfiguredStore(enabled bool, color string, brightness int) (*Store, error) {
+	r, g, b, err := ScaledColor(color, brightness)
 	if err != nil {
 		return nil, fmt.Errorf("parse configured RGB color/brightness: %w", err)
 	}
@@ -71,7 +70,7 @@ func NewStoreFromConfig(cfg config.Config) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open WS2812 strip: %w", err)
 	}
-	return NewStore(strip, State{Enabled: cfg.RGB.Enabled, Color: cfg.RGB.Color, Brightness: cfg.RGB.Brightness})
+	return NewStore(strip, State{Enabled: enabled, Color: color, Brightness: brightness})
 }
 
 func (s *Store) apply() error {
