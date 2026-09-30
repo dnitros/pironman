@@ -40,6 +40,7 @@ internal/
         ssd1306.go       — hand-rolled SSD1306 driver
         pwmfan.go        — sysfs read-only telemetry
         powerbutton_linux.go — hand-rolled evdev reader (stdlib syscall only)
+        shutdowner.go    — shells out to `shutdown -h now`
     rgb/                 — RGB domain logic against a hardware.WS2812 interface
     oled/                — page state machine: advance/previous/sleep/content-scroll
     fan/                 — case-fan on/off/auto/mode logic + PWM-fan reading
@@ -128,7 +129,7 @@ The v1 `auto` threshold (67.5°C, matching the original's "Balanced" curve) is a
 
 ## 7. Testing / validation strategy
 
-No CI hardware access, so every hardware boundary in `internal/hardware/*` is a small interface (`Relay`, `PWMFanReader`, `WS2812Strip`, `SSD1306Display`, `PowerButtonWatcher`). `rgb`/`oled`/`fan`/`powerbutton` are unit-tested entirely against hand-rolled fakes of these interfaces — no mocking library, since each interface is a handful of methods and hand-writing a fake is less code than adopting and learning a generator. The IPC protocol (`internal/ipc`) is tested with a real Unix socket in a temp directory (or `net.Pipe` for the framing logic alone) — no real daemon process needed.
+No CI hardware access, so every hardware boundary in `internal/hardware/*` is a small interface (`Relay`, `PWMFanReader`, `WS2812Strip`, `SSD1306Display`, `PowerButtonWatcher`, `Shutdowner`). `rgb`/`oled`/`fan`/`powerbutton`/`cli` are unit-tested entirely against hand-rolled fakes of these interfaces — no mocking library, since each interface is a handful of methods and hand-writing a fake is less code than adopting and learning a generator. The IPC protocol (`internal/ipc`) is tested with a real Unix socket in a temp directory (or `net.Pipe` for the framing logic alone) — no real daemon process needed.
 
 Manual on-device verification checklist, one per phase, run against the actual Pi 5 + case:
 - **Phase 0**: install/start/stop/uninstall the systemd unit; confirm socket permissions (`root:pironman`, `0660`) and that a non-root user in the `pironman` group can run `doctor`.
