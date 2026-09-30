@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -426,37 +427,59 @@ type fixedOLEDClock struct{ t time.Time }
 
 func (f fixedOLEDClock) Now() time.Time { return f.t }
 
-func TestShutdownDoesNotDeadlockWhenServeReturnsWithCtxStillLive(t *testing.T) {
-	srv := newTestIPCServer(t)
-
-	machine, err := oled.NewMachine(&fakeOLEDDisplay{}, fakeOLEDStatsSource{}, fixedOLEDClock{t: time.Now()},
-		[]string{oled.PageMix}, 10*time.Second, 3*time.Second, true)
-	if err != nil {
-		t.Fatalf("oled.NewMachine: %v", err)
+func TestTickLoopShutdownDoesNotDeadlockWhenServeReturnsWithCtxStillLive(t *testing.T) {
+	tests := []struct {
+		name    string
+		newTick func(t *testing.T) func() error
+	}{
+		{
+			name: "oled",
+			newTick: func(t *testing.T) func() error {
+				machine, _ := newFakeOLEDMachine(t, []string{oled.PageMix}, true)
+				return machine.Tick
+			},
+		},
+		{
+			name: "fan",
+			newTick: func(t *testing.T) func() error {
+				machine, err := fan.NewMachine(fakeFanRelay{}, fakeFanStatsSource{}, fan.ModeAuto)
+				if err != nil {
+					t.Fatalf("fan.NewMachine: %v", err)
+				}
+				return machine.Tick
+			},
+		},
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := newTestIPCServer(t)
+			tick := tt.newTick(t)
 
-	stopTicker := startOLEDTickLoop(ctx, machine)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
 
-	go func() {
-		time.Sleep(20 * time.Millisecond)
-		srv.Close()
-	}()
+			stopTicker := startTickLoop(ctx, time.Second, tt.name+" tick", tick)
 
-	done := make(chan error, 1)
-	go func() {
-		done <- serveDaemon(ctx, srv, stopTicker)
-	}()
+			go func() {
+				time.Sleep(20 * time.Millisecond)
+				srv.Close()
+			}()
 
-	select {
-	case err := <-done:
-		if err == nil {
-			t.Fatalf("expected serveDaemon to propagate the Accept error triggered by closing the listener")
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatalf("serveDaemon deadlocked: the shutdown hook never returned")
+			done := make(chan error, 1)
+			go func() {
+				done <- serveDaemon(ctx, srv, stopTicker)
+			}()
+
+			select {
+			case err := <-done:
+				if err == nil {
+					t.Fatalf("expected serveDaemon to propagate the Accept error triggered by closing the listener")
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatalf("serveDaemon deadlocked: the shutdown hook never returned")
+			}
+		})
 	}
 }
 
@@ -656,35 +679,59 @@ func TestPowerButtonWatchLoopStopsCleanlyOnShutdown(t *testing.T) {
 	}
 }
 
-func TestFanShutdownDoesNotDeadlockWhenServeReturnsWithCtxStillLive(t *testing.T) {
-	srv := newTestIPCServer(t)
+func TestTickLoopInvokesTickRepeatedlyAndStopsCleanly(t *testing.T) {
+	var calls int32
+	stop := startTickLoop(context.Background(), time.Millisecond, "test", func() error {
+		atomic.AddInt32(&calls, 1)
+		return nil
+	})
 
-	machine, err := fan.NewMachine(fakeFanRelay{}, fakeFanStatsSource{}, fan.ModeAuto)
-	if err != nil {
-		t.Fatalf("fan.NewMachine: %v", err)
+	deadline := time.Now().Add(2 * time.Second)
+	for atomic.LoadInt32(&calls) < 3 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if got := atomic.LoadInt32(&calls); got < 3 {
+		t.Fatalf("expected at least 3 tick calls, got %d", got)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	stopTicker := startFanTickLoop(ctx, machine)
-
-	go func() {
-		time.Sleep(20 * time.Millisecond)
-		srv.Close()
-	}()
-
 	done := make(chan error, 1)
-	go func() {
-		done <- serveDaemon(ctx, srv, stopTicker)
-	}()
-
+	go func() { done <- stop() }()
 	select {
 	case err := <-done:
-		if err == nil {
-			t.Fatalf("expected serveDaemon to propagate the Accept error triggered by closing the listener")
+		if err != nil {
+			t.Fatalf("stop: %v", err)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatalf("serveDaemon deadlocked: the shutdown hook never returned")
+		t.Fatalf("tick loop deadlocked: stop never returned")
+	}
+
+	done2 := make(chan error, 1)
+	go func() { done2 <- stop() }()
+	select {
+	case err := <-done2:
+		if err != nil {
+			t.Fatalf("second stop() call: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("tick loop deadlocked on second stop() call")
+	}
+}
+
+func TestTickLoopKeepsRunningAfterATickError(t *testing.T) {
+	var calls int32
+	stop := startTickLoop(context.Background(), time.Millisecond, "test", func() error {
+		if atomic.AddInt32(&calls, 1) == 1 {
+			return errBoom
+		}
+		return nil
+	})
+	defer stop()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for atomic.LoadInt32(&calls) < 2 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if got := atomic.LoadInt32(&calls); got < 2 {
+		t.Fatalf("expected the loop to keep ticking after an error, got %d calls", got)
 	}
 }

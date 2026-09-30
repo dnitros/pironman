@@ -61,6 +61,18 @@ func NewStore(strip hardware.WS2812Strip, initial State) (*Store, error) {
 	return s, nil
 }
 
+func NewConfiguredStore(enabled bool, color string, brightness int) (*Store, error) {
+	r, g, b, err := ScaledColor(color, brightness)
+	if err != nil {
+		return nil, fmt.Errorf("parse configured RGB color/brightness: %w", err)
+	}
+	strip, err := hardware.NewSPIWS2812(hardware.SPIPort, hardware.NumLEDs, r, g, b)
+	if err != nil {
+		return nil, fmt.Errorf("open WS2812 strip: %w", err)
+	}
+	return NewStore(strip, State{Enabled: enabled, Color: color, Brightness: brightness})
+}
+
 func (s *Store) apply() error {
 	if s.state.Enabled {
 		return s.strip.On()

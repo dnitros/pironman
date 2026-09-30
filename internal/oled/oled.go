@@ -78,6 +78,18 @@ func NewMachine(display hardware.SSD1306Display, stats sysstats.Source, clk cloc
 	return m, nil
 }
 
+func NewConfiguredMachine(enabled bool, pageOrder []string, sleepTimeoutSeconds, scrollIntervalSeconds int) (*Machine, error) {
+	display, err := hardware.NewI2CSSD1306(hardware.I2CPort)
+	if err != nil {
+		return nil, fmt.Errorf("open SSD1306 display: %w", err)
+	}
+	stats := sysstats.NewProcSource(sysstats.DefaultStatPath, sysstats.DefaultThermalPath, sysstats.DefaultMemInfoPath, sysstats.DefaultMountsPath)
+	return NewMachine(display, stats, clock.RealClock{}, pageOrder,
+		time.Duration(sleepTimeoutSeconds)*time.Second,
+		time.Duration(scrollIntervalSeconds)*time.Second,
+		enabled)
+}
+
 func (m *Machine) State() State {
 	m.mu.Lock()
 	defer m.mu.Unlock()

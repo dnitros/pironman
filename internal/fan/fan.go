@@ -50,6 +50,15 @@ func NewMachine(relay hardware.Relay, stats sysstats.Source, initialMode string)
 	return m, nil
 }
 
+func NewConfiguredMachine(initialMode string) (*Machine, error) {
+	relay, err := hardware.NewGPIORelay(hardware.CaseFanRelayLine)
+	if err != nil {
+		return nil, fmt.Errorf("open case-fan relay: %w", err)
+	}
+	stats := sysstats.NewProcSource(sysstats.DefaultStatPath, sysstats.DefaultThermalPath, sysstats.DefaultMemInfoPath, sysstats.DefaultMountsPath)
+	return NewMachine(relay, stats, initialMode)
+}
+
 func (m *Machine) State() State {
 	m.mu.Lock()
 	defer m.mu.Unlock()
