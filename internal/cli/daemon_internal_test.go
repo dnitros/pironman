@@ -6,13 +6,17 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/dnitros/pironman/internal/clock"
 	"github.com/dnitros/pironman/internal/fan"
 	"github.com/dnitros/pironman/internal/groupaccess"
+	"github.com/dnitros/pironman/internal/hardware"
 	"github.com/dnitros/pironman/internal/ipc"
 	"github.com/dnitros/pironman/internal/oled"
+	"github.com/dnitros/pironman/internal/powerbutton"
 	"github.com/dnitros/pironman/internal/rgb"
 	"github.com/dnitros/pironman/internal/sysstats"
 )
@@ -446,6 +450,112 @@ func (fakeFanRelay) Set(on bool) error { return nil }
 type fakeFanStatsSource struct{}
 
 func (fakeFanStatsSource) Snapshot() (sysstats.Snapshot, error) { return sysstats.Snapshot{}, nil }
+
+func newFakeOLEDMachine(t *testing.T, pages []string, initialAwake bool) *oled.Machine {
+	t.Helper()
+	machine, err := oled.NewMachine(fakeOLEDDisplay{}, fakeOLEDStatsSource{}, fixedOLEDClock{t: time.Now()},
+		pages, 10*time.Second, 3*time.Second, initialAwake)
+	if err != nil {
+		t.Fatalf("oled.NewMachine: %v", err)
+	}
+	return machine
+}
+
+func TestDispatchPowerButtonEventClickWakesAndAdvancesOLED(t *testing.T) {
+	machine := newFakeOLEDMachine(t, []string{oled.PageMix, oled.PagePerformance}, false)
+
+	if err := dispatchPowerButtonEvent(powerbutton.EventClick, machine); err != nil {
+		t.Fatalf("dispatchPowerButtonEvent: %v", err)
+	}
+	if !machine.State().Awake {
+		t.Fatalf("expected EventClick to wake the OLED")
+	}
+}
+
+func TestDispatchPowerButtonEventDoubleClickGoesToPreviousPage(t *testing.T) {
+	machine := newFakeOLEDMachine(t, []string{oled.PageMix, oled.PagePerformance}, true)
+
+	if err := dispatchPowerButtonEvent(powerbutton.EventDoubleClick, machine); err != nil {
+		t.Fatalf("dispatchPowerButtonEvent: %v", err)
+	}
+	if got := machine.State().Page; got != oled.PagePerformance {
+		t.Fatalf("expected double-click to move to the previous page, got %q", got)
+	}
+}
+
+func TestDispatchPowerButtonEventDoubleClickIsNoOpWhileAsleep(t *testing.T) {
+	machine := newFakeOLEDMachine(t, []string{oled.PageMix, oled.PagePerformance}, false)
+	before := machine.State()
+
+	if err := dispatchPowerButtonEvent(powerbutton.EventDoubleClick, machine); err != nil {
+		t.Fatalf("dispatchPowerButtonEvent: %v", err)
+	}
+	if got := machine.State(); got != before {
+		t.Fatalf("expected double-click to be a no-op while asleep, got %+v (was %+v)", got, before)
+	}
+}
+
+func TestDispatchPowerButtonEventLongPressIsANoOp(t *testing.T) {
+	for _, event := range []powerbutton.Event{powerbutton.EventNone, powerbutton.EventLongPress, powerbutton.EventLongPressReleased} {
+		machine := newFakeOLEDMachine(t, []string{oled.PageMix, oled.PagePerformance}, false)
+		before := machine.State()
+
+		if err := dispatchPowerButtonEvent(event, machine); err != nil {
+			t.Fatalf("dispatchPowerButtonEvent(%v): %v", event, err)
+		}
+		if got := machine.State(); got != before {
+			t.Fatalf("event %v: expected no OLED state change, got %+v (was %+v)", event, got, before)
+		}
+	}
+}
+
+type fakePowerButtonWatcher struct {
+	events chan hardware.PowerButtonEvent
+	closed chan struct{}
+	once   sync.Once
+}
+
+func newFakePowerButtonWatcher() *fakePowerButtonWatcher {
+	return &fakePowerButtonWatcher{
+		events: make(chan hardware.PowerButtonEvent),
+		closed: make(chan struct{}),
+	}
+}
+
+func (f *fakePowerButtonWatcher) Next() (hardware.PowerButtonEvent, error) {
+	select {
+	case ev := <-f.events:
+		return ev, nil
+	case <-f.closed:
+		return hardware.PowerButtonEvent{}, errBoom
+	}
+}
+
+func (f *fakePowerButtonWatcher) Close() error {
+	f.once.Do(func() { close(f.closed) })
+	return nil
+}
+
+func TestPowerButtonWatchLoopStopsCleanlyOnShutdown(t *testing.T) {
+	watcher := newFakePowerButtonWatcher()
+	classifier := powerbutton.NewClassifier(clock.RealClock{})
+	machine := newFakeOLEDMachine(t, []string{oled.PageMix}, false)
+
+	stop := startPowerButtonWatchLoop(watcher, classifier, machine)
+
+	done := make(chan error, 1)
+	go func() { done <- stop() }()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("power-button watch loop deadlocked: shutdown never returned")
+	}
+
+	if err := stop(); err != nil {
+		t.Fatalf("second stop() call: %v", err)
+	}
+}
 
 func TestFanShutdownDoesNotDeadlockWhenServeReturnsWithCtxStillLive(t *testing.T) {
 	srv := newTestIPCServer(t)

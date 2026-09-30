@@ -14,7 +14,8 @@ review before any implementation starts.
   enabled in boot config, OLED confirmed detected on the I2C bus.
 - Devices involved: `/dev/i2c-1` (OLED, and likely fan-state read),
   `/dev/spidev0.0` (likely WS2812 RGB), a GPIO line for the fan on/off relay,
-  and a GPIO input line for the power button.
+  and the power button, wired as a standard Linux input device (evdev, under
+  `/dev/input`) rather than a raw GPIO line.
 - **Important**: Raspberry Pi 5 exposes GPIO through the RP1 southbridge
   chip (PCIe-attached), not the SoC's legacy memory-mapped GPIO used on
   earlier Pi models. Libraries built around the old `/dev/gpiomem`-style
