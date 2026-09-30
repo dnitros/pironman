@@ -63,7 +63,7 @@ func TestGatherDoctorReachableInstalledActive(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	mgr := &fakeServiceManager{installed: true, active: true}
 
-	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"))
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"), filepath.Join(t.TempDir(), "input-devices"))
 	if err != nil {
 		t.Fatalf("gatherDoctor: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestGatherDoctorUnreachableSocket(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	mgr := &fakeServiceManager{installed: false, active: false}
 
-	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"))
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"), filepath.Join(t.TempDir(), "input-devices"))
 	if err != nil {
 		t.Fatalf("expected gatherDoctor to degrade gracefully, got error: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestGatherDoctorReportsUnsupportedPlatformWithoutHardErroring(t *testing.T)
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	mgr := &fakeServiceManager{unsupported: true, isInstalledErr: errBoom, isActiveErr: errBoom}
 
-	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"))
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"), filepath.Join(t.TempDir(), "input-devices"))
 	if err != nil {
 		t.Fatalf("expected gatherDoctor to degrade gracefully on an unsupported platform, got: %v", err)
 	}
@@ -114,7 +114,7 @@ func TestGatherDoctorPropagatesIsInstalledError(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	mgr := &fakeServiceManager{isInstalledErr: errBoom}
 
-	if _, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1")); err == nil {
+	if _, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"), filepath.Join(t.TempDir(), "input-devices")); err == nil {
 		t.Fatalf("expected an error when IsInstalled fails")
 	}
 }
@@ -124,7 +124,7 @@ func TestGatherDoctorPropagatesIsActiveError(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	mgr := &fakeServiceManager{installed: true, isActiveErr: errBoom}
 
-	if _, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1")); err == nil {
+	if _, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"), filepath.Join(t.TempDir(), "input-devices")); err == nil {
 		t.Fatalf("expected an error when IsActive fails")
 	}
 }
@@ -136,7 +136,7 @@ func TestGatherDoctorReportsMissingConfigAsDefaulted(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	mgr := &fakeServiceManager{installed: true, active: true}
 
-	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"))
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"), filepath.Join(t.TempDir(), "input-devices"))
 	if err != nil {
 		t.Fatalf("gatherDoctor: %v", err)
 	}
@@ -153,7 +153,7 @@ func TestGatherDoctorReportsReadableConfig(t *testing.T) {
 	writeFile(t, cfgPath, "rgb:\n  enabled: true\n")
 	mgr := &fakeServiceManager{installed: true, active: true}
 
-	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"))
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"), filepath.Join(t.TempDir(), "input-devices"))
 	if err != nil {
 		t.Fatalf("gatherDoctor: %v", err)
 	}
@@ -170,7 +170,7 @@ func TestGatherDoctorReportsMalformedConfig(t *testing.T) {
 	writeFile(t, cfgPath, "not: [valid: yaml")
 	mgr := &fakeServiceManager{installed: true, active: true}
 
-	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"))
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"), filepath.Join(t.TempDir(), "input-devices"))
 	if err != nil {
 		t.Fatalf("gatherDoctor: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestGatherDoctorReportsSocketPermissions(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	mgr := &fakeServiceManager{installed: true, active: true}
 
-	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"))
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"), filepath.Join(t.TempDir(), "input-devices"))
 	if err != nil {
 		t.Fatalf("gatherDoctor: %v", err)
 	}
@@ -200,7 +200,7 @@ func TestGatherDoctorReportsMissingSocketGracefully(t *testing.T) {
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	mgr := &fakeServiceManager{}
 
-	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"))
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"), filepath.Join(t.TempDir(), "input-devices"))
 	if err != nil {
 		t.Fatalf("expected gatherDoctor to degrade gracefully, got error: %v", err)
 	}
@@ -216,7 +216,7 @@ func TestGatherDoctorReportsSPIEnabled(t *testing.T) {
 	spiPath := filepath.Join(t.TempDir(), "spidev0.0")
 	writeFile(t, spiPath, "")
 
-	info, err := gatherDoctor(path, mgr, cfgPath, spiPath, filepath.Join(t.TempDir(), "i2c-1"))
+	info, err := gatherDoctor(path, mgr, cfgPath, spiPath, filepath.Join(t.TempDir(), "i2c-1"), filepath.Join(t.TempDir(), "input-devices"))
 	if err != nil {
 		t.Fatalf("gatherDoctor: %v", err)
 	}
@@ -231,7 +231,7 @@ func TestGatherDoctorReportsSPIDisabled(t *testing.T) {
 	mgr := &fakeServiceManager{}
 	spiPath := filepath.Join(t.TempDir(), "spidev0.0")
 
-	info, err := gatherDoctor(path, mgr, cfgPath, spiPath, filepath.Join(t.TempDir(), "i2c-1"))
+	info, err := gatherDoctor(path, mgr, cfgPath, spiPath, filepath.Join(t.TempDir(), "i2c-1"), filepath.Join(t.TempDir(), "input-devices"))
 	if err != nil {
 		t.Fatalf("gatherDoctor: %v", err)
 	}
@@ -247,7 +247,7 @@ func TestGatherDoctorReportsI2CEnabled(t *testing.T) {
 	i2cPath := filepath.Join(t.TempDir(), "i2c-1")
 	writeFile(t, i2cPath, "")
 
-	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), i2cPath)
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), i2cPath, filepath.Join(t.TempDir(), "input-devices"))
 	if err != nil {
 		t.Fatalf("gatherDoctor: %v", err)
 	}
@@ -262,12 +262,67 @@ func TestGatherDoctorReportsI2CDisabled(t *testing.T) {
 	mgr := &fakeServiceManager{}
 	i2cPath := filepath.Join(t.TempDir(), "i2c-1")
 
-	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), i2cPath)
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), i2cPath, filepath.Join(t.TempDir(), "input-devices"))
 	if err != nil {
 		t.Fatalf("gatherDoctor: %v", err)
 	}
 	if info.I2CEnabled {
 		t.Fatalf("expected I2CEnabled to be false when %q is absent", i2cPath)
+	}
+}
+
+func TestGatherDoctorReportsPowerButtonFound(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "no-such-daemon.sock")
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+	mgr := &fakeServiceManager{}
+	inputPath := filepath.Join(t.TempDir(), "devices")
+	writeFile(t, inputPath, "I: Bus=0019 Vendor=0000 Product=0001 Version=0000\n"+
+		"N: Name=\"Power Button\"\n"+
+		"H: Handlers=kbd event0\n"+
+		"B: EV=3\n"+
+		"B: KEY=10000000000000 0\n")
+
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"), inputPath)
+	if err != nil {
+		t.Fatalf("gatherDoctor: %v", err)
+	}
+	if !info.PowerButtonFound {
+		t.Fatalf("expected PowerButtonFound to be true when a KEY_POWER-capable device is listed")
+	}
+}
+
+func TestGatherDoctorReportsPowerButtonNotFound(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "no-such-daemon.sock")
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+	mgr := &fakeServiceManager{}
+	inputPath := filepath.Join(t.TempDir(), "devices")
+	writeFile(t, inputPath, "I: Bus=0003 Vendor=046d Product=c52b Version=0111\n"+
+		"N: Name=\"Mouse\"\n"+
+		"H: Handlers=mouse0 event1\n"+
+		"B: EV=17\n"+
+		"B: KEY=70000 0 0 0\n")
+
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"), inputPath)
+	if err != nil {
+		t.Fatalf("gatherDoctor: %v", err)
+	}
+	if info.PowerButtonFound {
+		t.Fatalf("expected PowerButtonFound to be false when no listed device advertises KEY_POWER")
+	}
+}
+
+func TestGatherDoctorReportsPowerButtonMissingFileGracefully(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "no-such-daemon.sock")
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+	mgr := &fakeServiceManager{}
+	inputPath := filepath.Join(t.TempDir(), "no-such-devices-file")
+
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"), inputPath)
+	if err != nil {
+		t.Fatalf("expected gatherDoctor to degrade gracefully when %s is absent, got error: %v", inputPath, err)
+	}
+	if info.PowerButtonFound {
+		t.Fatalf("expected PowerButtonFound to be false when the input-devices file is absent")
 	}
 }
 
@@ -282,12 +337,36 @@ func TestGatherDoctorReportsI2CToolsInstalled(t *testing.T) {
 	}
 	t.Setenv("PATH", binDir)
 
-	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"))
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"), filepath.Join(t.TempDir(), "input-devices"))
 	if err != nil {
 		t.Fatalf("gatherDoctor: %v", err)
 	}
 	if !info.I2CToolsInstalled {
 		t.Fatalf("expected I2CToolsInstalled to be true when i2cdetect is on PATH")
+	}
+}
+
+func TestHasKeyPowerCapabilityDetectsPowerButtonBit(t *testing.T) {
+	if !hasKeyPowerCapability("10000000000000 0") {
+		t.Fatalf("expected KEY_POWER bit to be detected")
+	}
+}
+
+func TestHasKeyPowerCapabilityIgnoresUnrelatedBits(t *testing.T) {
+	if hasKeyPowerCapability("3") {
+		t.Fatalf("expected a single low word with no KEY_POWER bit to report false")
+	}
+}
+
+func TestHasKeyPowerCapabilityHandlesMalformedHex(t *testing.T) {
+	if hasKeyPowerCapability("zz zz") {
+		t.Fatalf("expected malformed hex to report false, not error out")
+	}
+}
+
+func TestHasKeyPowerCapabilityHandlesEmptyValue(t *testing.T) {
+	if hasKeyPowerCapability("") {
+		t.Fatalf("expected an empty value to report false")
 	}
 }
 
@@ -297,7 +376,7 @@ func TestGatherDoctorReportsI2CToolsNotInstalled(t *testing.T) {
 	mgr := &fakeServiceManager{}
 	t.Setenv("PATH", t.TempDir())
 
-	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"))
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"), filepath.Join(t.TempDir(), "input-devices"))
 	if err != nil {
 		t.Fatalf("gatherDoctor: %v", err)
 	}
