@@ -59,7 +59,7 @@ func newDoctorCmd() *cobra.Command {
 	}
 }
 
-func gatherDoctor(socketPath string, mgr systemdunit.Manager, cfgPath string, spiPath string, i2cPath string, inputDevicesPath string) (DoctorInfo, error) {
+func gatherDoctor(socketPath string, mgr systemdunit.Manager, cfgPath string, spiPath string, i2cPath string, inputPath string) (DoctorInfo, error) {
 	supported := mgr.IsSupported()
 
 	var installed, active bool
@@ -91,7 +91,7 @@ func gatherDoctor(socketPath string, mgr systemdunit.Manager, cfgPath string, sp
 		SPIEnabled:        devPathExists(spiPath),
 		I2CEnabled:        devPathExists(i2cPath),
 		I2CToolsInstalled: i2cToolsInstalled(),
-		PowerButtonFound:  powerButtonDeviceFound(inputDevicesPath),
+		PowerButtonFound:  powerButtonDeviceFound(inputPath),
 	}, nil
 }
 

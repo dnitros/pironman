@@ -275,14 +275,14 @@ func TestGatherDoctorReportsPowerButtonFound(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "no-such-daemon.sock")
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	mgr := &fakeServiceManager{}
-	inputDevicesPath := filepath.Join(t.TempDir(), "devices")
-	writeFile(t, inputDevicesPath, "I: Bus=0019 Vendor=0000 Product=0001 Version=0000\n"+
+	inputPath := filepath.Join(t.TempDir(), "devices")
+	writeFile(t, inputPath, "I: Bus=0019 Vendor=0000 Product=0001 Version=0000\n"+
 		"N: Name=\"Power Button\"\n"+
 		"H: Handlers=kbd event0\n"+
 		"B: EV=3\n"+
 		"B: KEY=10000000000000 0\n")
 
-	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"), inputDevicesPath)
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"), inputPath)
 	if err != nil {
 		t.Fatalf("gatherDoctor: %v", err)
 	}
@@ -295,14 +295,14 @@ func TestGatherDoctorReportsPowerButtonNotFound(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "no-such-daemon.sock")
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	mgr := &fakeServiceManager{}
-	inputDevicesPath := filepath.Join(t.TempDir(), "devices")
-	writeFile(t, inputDevicesPath, "I: Bus=0003 Vendor=046d Product=c52b Version=0111\n"+
+	inputPath := filepath.Join(t.TempDir(), "devices")
+	writeFile(t, inputPath, "I: Bus=0003 Vendor=046d Product=c52b Version=0111\n"+
 		"N: Name=\"Mouse\"\n"+
 		"H: Handlers=mouse0 event1\n"+
 		"B: EV=17\n"+
 		"B: KEY=70000 0 0 0\n")
 
-	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"), inputDevicesPath)
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"), inputPath)
 	if err != nil {
 		t.Fatalf("gatherDoctor: %v", err)
 	}
@@ -315,10 +315,11 @@ func TestGatherDoctorReportsPowerButtonMissingFileGracefully(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "no-such-daemon.sock")
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	mgr := &fakeServiceManager{}
+	inputPath := filepath.Join(t.TempDir(), "no-such-devices-file")
 
-	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"), filepath.Join(t.TempDir(), "no-such-devices-file"))
+	info, err := gatherDoctor(path, mgr, cfgPath, filepath.Join(t.TempDir(), "spidev0.0"), filepath.Join(t.TempDir(), "i2c-1"), inputPath)
 	if err != nil {
-		t.Fatalf("expected gatherDoctor to degrade gracefully when %s is absent, got error: %v", inputDevicesPath, err)
+		t.Fatalf("expected gatherDoctor to degrade gracefully when %s is absent, got error: %v", inputPath, err)
 	}
 	if info.PowerButtonFound {
 		t.Fatalf("expected PowerButtonFound to be false when the input-devices file is absent")
