@@ -180,6 +180,7 @@ func (s *Store) startAnimationLocked() {
 	go s.runAnimation(ctx, done)
 }
 
+// Unlocking here is safe only because opMu serializes every RGB handler.
 func (s *Store) stopAndWaitLocked() {
 	if s.animCancel == nil {
 		return
