@@ -30,12 +30,8 @@ func newOLEDSetCmd(use, short string) *cobra.Command {
 }
 
 func runOLEDSet(socketPath, use string) error {
-	resp, err := ipc.Send(socketPath, "oled."+use, nil)
-	if err != nil {
-		return fmt.Errorf("oled %s: daemon unreachable: %w", use, err)
-	}
-	if !resp.OK {
-		return fmt.Errorf("oled %s: %s", use, resp.Error)
+	if _, err := sendCommand(socketPath, "oled."+use, nil, "oled "+use); err != nil {
+		return err
 	}
 
 	fmt.Printf("OLED display turned %s\n", use)
@@ -54,12 +50,8 @@ func newOLEDPageCmd() *cobra.Command {
 }
 
 func runOLEDPage(socketPath, page string) error {
-	resp, err := ipc.Send(socketPath, "oled.page", map[string]any{"page": page})
-	if err != nil {
-		return fmt.Errorf("oled page %s: daemon unreachable: %w", page, err)
-	}
-	if !resp.OK {
-		return fmt.Errorf("oled page %s: %s", page, resp.Error)
+	if _, err := sendCommand(socketPath, "oled.page", map[string]any{"page": page}, "oled page "+page); err != nil {
+		return err
 	}
 
 	fmt.Printf("OLED page set to %s\n", page)

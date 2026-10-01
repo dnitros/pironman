@@ -42,12 +42,7 @@ func diskLines(snap sysstats.Snapshot, scrollIdx int) []string {
 	}
 
 	const groupSize = 3
-	groups := (len(snap.Disks) + groupSize - 1) / groupSize
-	start := (scrollIdx % groups) * groupSize
-	end := start + groupSize
-	if end > len(snap.Disks) {
-		end = len(snap.Disks)
-	}
+	start, end := paginate(len(snap.Disks), groupSize, scrollIdx)
 
 	lines := make([]string, 0, end-start)
 	for _, d := range snap.Disks[start:end] {
@@ -71,6 +66,13 @@ func formatDiskSize(usedBytes, totalBytes uint64) string {
 	return fmt.Sprintf("%.1f/%.1f%s", scaledUsed, scaledTotal, units[unit])
 }
 
+func paginate(total, size, idx int) (start, end int) {
+	groups := (total + size - 1) / size
+	start = (idx % groups) * size
+	end = min(start+size, total)
+	return start, end
+}
+
 const ipsPerPage = 3
 
 func ipsLines(snap sysstats.Snapshot, scrollIdx int) []string {
@@ -84,12 +86,7 @@ func ipsLines(snap sysstats.Snapshot, scrollIdx int) []string {
 	}
 	sort.Strings(names)
 
-	groups := (len(names) + ipsPerPage - 1) / ipsPerPage
-	start := (scrollIdx % groups) * ipsPerPage
-	end := start + ipsPerPage
-	if end > len(names) {
-		end = len(names)
-	}
+	start, end := paginate(len(names), ipsPerPage, scrollIdx)
 
 	lines := make([]string, 0, end-start)
 	for _, name := range names[start:end] {
