@@ -76,6 +76,26 @@ func isAnimated(style string) bool {
 	return ok && d.frame != nil
 }
 
+// speedToDelay maps a 0-100 speed percentage linearly onto a frame delay,
+// where 0 is slowest (maxDelay) and 100 is fastest (minDelay).
+func speedToDelay(speedPercent int, maxDelay, minDelay time.Duration) time.Duration {
+	span := maxDelay - minDelay
+	return maxDelay - span*time.Duration(speedPercent)/100
+}
+
+func scaleColor(r, g, b byte, percent int) hardware.Color {
+	return hardware.Color{R: scale(r, percent), G: scale(g, percent), B: scale(b, percent)}
+}
+
+// mirrorIndex returns i unchanged, or its mirror image across numLEDs when
+// reverse is set, so a chase/rotation can walk the opposite physical direction.
+func mirrorIndex(i, numLEDs int, reverse bool) int {
+	if reverse {
+		return numLEDs - 1 - i
+	}
+	return i
+}
+
 // 200 matches original pironman 5 breathing cycle.
 const breathingSteps = 200
 
@@ -89,7 +109,7 @@ func BreathingFrame(frame int, r, g, b byte, brightnessPercent, numLEDs int) []h
 	}
 
 	scaledPercent := brightnessPercent * levelPercent / 100
-	color := hardware.Color{R: scale(r, scaledPercent), G: scale(g, scaledPercent), B: scale(b, scaledPercent)}
+	color := scaleColor(r, g, b, scaledPercent)
 
 	// ponytail: allocates one small (NumLEDs-length) slice per frame; skip a
 	// reused buffer unless profiling shows animation GC pressure, since
@@ -107,20 +127,16 @@ const (
 )
 
 func BreathingDelay(speedPercent int) time.Duration {
-	span := breathingDelayMax - breathingDelayMin
-	return breathingDelayMax - span*time.Duration(speedPercent)/100
+	return speedToDelay(speedPercent, breathingDelayMax, breathingDelayMin)
 }
 
 // FlowFrame lights exactly one LED at a time, advancing one physical index
 // per frame; reverse walks the indices in the opposite order.
 func FlowFrame(frame int, r, g, b byte, brightnessPercent, numLEDs int, reverse bool) []hardware.Color {
-	pos := frame % numLEDs
-	if reverse {
-		pos = numLEDs - 1 - pos
-	}
+	pos := mirrorIndex(frame%numLEDs, numLEDs, reverse)
 
 	pixels := make([]hardware.Color, numLEDs)
-	pixels[pos] = hardware.Color{R: scale(r, brightnessPercent), G: scale(g, brightnessPercent), B: scale(b, brightnessPercent)}
+	pixels[pos] = scaleColor(r, g, b, brightnessPercent)
 	return pixels
 }
 
@@ -130,8 +146,7 @@ const (
 )
 
 func FlowDelay(speedPercent int) time.Duration {
-	span := flowDelayMax - flowDelayMin
-	return flowDelayMax - span*time.Duration(speedPercent)/100
+	return speedToDelay(speedPercent, flowDelayMax, flowDelayMin)
 }
 
 // HSLToRGB converts an HSL color (h in degrees, wrapping outside [0,360); s
@@ -177,13 +192,10 @@ func RainbowFrame(frame int, brightnessPercent, numLEDs int, reverse bool) []har
 
 	pixels := make([]hardware.Color, numLEDs)
 	for i := range pixels {
-		idx := i
-		if reverse {
-			idx = numLEDs - 1 - i
-		}
+		idx := mirrorIndex(i, numLEDs, reverse)
 		hue := float64((idx*rainbowCycleDegrees/numLEDs + phase) % rainbowCycleDegrees)
 		r, g, b := HSLToRGB(hue, 100, 50)
-		pixels[i] = hardware.Color{R: scale(r, brightnessPercent), G: scale(g, brightnessPercent), B: scale(b, brightnessPercent)}
+		pixels[i] = scaleColor(r, g, b, brightnessPercent)
 	}
 	return pixels
 }
@@ -194,8 +206,7 @@ const (
 )
 
 func RainbowDelay(speedPercent int) time.Duration {
-	span := rainbowDelayMax - rainbowDelayMin
-	return rainbowDelayMax - span*time.Duration(speedPercent)/100
+	return speedToDelay(speedPercent, rainbowDelayMax, rainbowDelayMin)
 }
 
 func animationFrame(style string, frame int, r, g, b byte, brightnessPercent, speedPercent, numLEDs int) ([]hardware.Color, time.Duration, error) {
