@@ -13,16 +13,11 @@ const (
 	StyleBreathing = "breathing"
 )
 
-// frameFunc computes one animation frame and the delay before the next.
 type frameFunc func(frame int, r, g, b byte, brightnessPercent, speedPercent, numLEDs int) ([]hardware.Color, time.Duration)
 
-// styleDef is the single source of truth for a style's name, whether it
-// animates, and how it computes frames — name validation, the
-// solid/animated split, and frame dispatch all read from this list instead
-// of keeping separate, driftable copies of "which styles exist."
 type styleDef struct {
 	name  string
-	frame frameFunc // nil for the non-animated solid style
+	frame frameFunc
 }
 
 var styleDefs = []styleDef{
@@ -64,8 +59,6 @@ func isAnimated(style string) bool {
 	return ok && d.frame != nil
 }
 
-// breathingSteps is the length of the triangular fade cycle, matching
-// sunfounder/pm_auto's ws2812.py breathing effect.
 const breathingSteps = 200
 
 func BreathingFrame(frame int, r, g, b byte, brightnessPercent, numLEDs int) []hardware.Color {
@@ -91,8 +84,8 @@ func BreathingFrame(frame int, r, g, b byte, brightnessPercent, numLEDs int) []h
 }
 
 const (
-	breathingDelayMax = 100 * time.Millisecond // speed 0 (slowest)
-	breathingDelayMin = 1 * time.Millisecond   // speed 100 (fastest)
+	breathingDelayMax = 100 * time.Millisecond
+	breathingDelayMin = 1 * time.Millisecond
 )
 
 func BreathingDelay(speedPercent int) time.Duration {
@@ -100,8 +93,6 @@ func BreathingDelay(speedPercent int) time.Duration {
 	return breathingDelayMax - span*time.Duration(speedPercent)/100
 }
 
-// animationFrame computes one frame for the given animated style, driven by
-// the Store's self-paced animation loop.
 func animationFrame(style string, frame int, r, g, b byte, brightnessPercent, speedPercent, numLEDs int) ([]hardware.Color, time.Duration, error) {
 	d, ok := lookupStyle(style)
 	if !ok || d.frame == nil {

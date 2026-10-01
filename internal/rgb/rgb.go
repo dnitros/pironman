@@ -11,8 +11,6 @@ import (
 	"github.com/dnitros/pironman/internal/hardware"
 )
 
-// sleep paces the animation loop between frames; overridden in white-box
-// tests so they don't wait on real wall-clock time.
 var sleep = time.Sleep
 
 type State struct {
@@ -131,8 +129,6 @@ func (s *Store) Off() (State, error) {
 	return s.state, nil
 }
 
-// SetStyle switches the active style, optionally updating speed in the same
-// call. A nil speed leaves the currently configured speed unchanged.
 func (s *Store) SetStyle(name string, speed *int) (State, error) {
 	if err := ValidateStyle(name); err != nil {
 		return State{}, err
@@ -166,8 +162,6 @@ func (s *Store) SetStyle(name string, speed *int) (State, error) {
 
 	s.stopAndWaitLocked()
 	if err := s.applyScaled(s.state.Color, s.state.Brightness); err != nil {
-		// Roll back so State() keeps reflecting what's actually on the strip,
-		// matching SetColor/SetBrightness's existing revert-on-failure behavior.
 		s.state.Style, s.state.Speed = prevStyle, prevSpeed
 		s.startAnimationLocked()
 		return s.state, err
@@ -175,8 +169,6 @@ func (s *Store) SetStyle(name string, speed *int) (State, error) {
 	return s.state, nil
 }
 
-// startAnimationLocked starts the self-paced animation goroutine. The caller
-// must hold mu and ensure no animation is already running.
 func (s *Store) startAnimationLocked() {
 	if s.animCancel != nil {
 		return
@@ -188,11 +180,6 @@ func (s *Store) startAnimationLocked() {
 	go s.runAnimation(ctx, done)
 }
 
-// stopAndWaitLocked cancels any running animation loop and blocks until it
-// exits, briefly releasing mu while waiting. This is safe only because every
-// RGB-mutating IPC handler already serializes on a shared operation mutex
-// (see internal/handlers.RGBHandlers), so no other Store method can run
-// during the gap.
 func (s *Store) stopAndWaitLocked() {
 	if s.animCancel == nil {
 		return

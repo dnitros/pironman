@@ -56,7 +56,6 @@ func TestBreathingFrameAtZeroIsFullyDark(t *testing.T) {
 
 func TestBreathingFrameAtMidCycleIsNearlyFullBrightness(t *testing.T) {
 	frame := rgb.BreathingFrame(100, 0xff, 0, 0, 100, 1)
-	// 200-step cycle, triangular ramp peaking at step 100 (~99% of configured color).
 	want := byte(0xff * 99 / 100)
 	if frame[0].R != want {
 		t.Fatalf("expected R near peak brightness (%d), got %d", want, frame[0].R)

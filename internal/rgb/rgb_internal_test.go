@@ -11,8 +11,6 @@ import (
 
 var errFakeStripOn = errors.New("fake strip on failed")
 
-// fakeStrip is a minimal, mutex-protected WS2812Strip fake for exercising
-// the animation goroutine, which writes frames concurrently with the test.
 type fakeStrip struct {
 	mu              sync.Mutex
 	onCalls         int
@@ -46,8 +44,6 @@ func (f *fakeStrip) counts() (on, off, setColor, writeFrame int) {
 	return f.onCalls, f.offCalls, f.setColorCalls, f.writeFrameCalls
 }
 
-// withNoOpSleep overrides the package's animation-loop sleep so tests never
-// wait on real wall-clock time, and restores it on cleanup.
 func withNoOpSleep(t *testing.T) {
 	t.Helper()
 	orig := sleep
@@ -55,14 +51,9 @@ func withNoOpSleep(t *testing.T) {
 	t.Cleanup(func() { sleep = orig })
 }
 
-// withSteppedSleep overrides sleep with a fake that reports each completed
-// frame on frameDone and then blocks on step, letting the test pace the
-// animation loop one frame at a time.
 func withSteppedSleep(t *testing.T) (frameDone <-chan struct{}, step chan<- struct{}) {
 	t.Helper()
 	orig := sleep
-	// Buffered so the loop's own "frame written" report never blocks once the
-	// test stops draining it (e.g. while racing a concurrent cancellation).
 	done := make(chan struct{}, 8)
 	gate := make(chan struct{})
 	sleep = func(time.Duration) {
@@ -123,12 +114,12 @@ func TestAnimationLoopWritesFramesUntilStopped(t *testing.T) {
 		t.Fatalf("NewStore: %v", err)
 	}
 
-	<-frameDone // frame 0 written
+	<-frameDone
 	if _, _, _, writeFrame := strip.counts(); writeFrame != 1 {
 		t.Fatalf("expected 1 frame written, got %d", writeFrame)
 	}
 
-	step <- struct{}{} // allow frame 1
+	step <- struct{}{}
 	<-frameDone
 	if _, _, _, writeFrame := strip.counts(); writeFrame != 2 {
 		t.Fatalf("expected 2 frames written, got %d", writeFrame)
@@ -139,8 +130,6 @@ func TestAnimationLoopWritesFramesUntilStopped(t *testing.T) {
 		store.Off()
 		close(offDone)
 	}()
-	// Cancellation races the sleep gate: keep pumping both channels until the
-	// loop notices ctx.Done() and Off() returns, however many frames that takes.
 drain:
 	for {
 		select {
