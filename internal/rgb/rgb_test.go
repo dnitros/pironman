@@ -401,6 +401,28 @@ func TestStoreColorPersistsAcrossSimulatedRestart(t *testing.T) {
 	}
 }
 
+func TestStoreStyleAndSpeedPersistAcrossSimulatedRestart(t *testing.T) {
+	strip := &fakeStrip{}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: false, Style: "solid", Speed: 50})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	speed := 90
+	if _, err := store.SetStyle("breathing", &speed); err != nil {
+		t.Fatalf("SetStyle: %v", err)
+	}
+
+	restartedStrip := &fakeStrip{}
+	restarted, err := rgb.NewStore(restartedStrip, rgb.State{Enabled: false, Style: store.State().Style, Speed: store.State().Speed})
+	if err != nil {
+		t.Fatalf("NewStore (restart): %v", err)
+	}
+
+	if restarted.State().Style != "breathing" || restarted.State().Speed != 90 {
+		t.Fatalf("expected style/speed to survive the simulated restart, got %+v", restarted.State())
+	}
+}
+
 func TestStorePersistsAcrossSimulatedRestart(t *testing.T) {
 	strip := &fakeStrip{}
 	store, err := rgb.NewStore(strip, rgb.State{Enabled: true})
