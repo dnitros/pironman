@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/dnitros/pironman/internal/config"
+	"github.com/dnitros/pironman/internal/hardware"
 	"github.com/dnitros/pironman/internal/ipc"
 	"github.com/dnitros/pironman/internal/rgb"
 )
@@ -26,6 +27,7 @@ func (f *fakeStrip) SetColor(r, g, b byte) {
 	f.setColorCalls++
 	f.lastR, f.lastG, f.lastB = r, g, b
 }
+func (f *fakeStrip) WriteFrame(pixels []hardware.Color) error { return nil }
 
 func startTestDaemon(t *testing.T, handlers map[string]ipc.Handler) string {
 	t.Helper()
@@ -497,6 +499,113 @@ func TestRGBBrightnessHandlerRejectsNonFinitePercent(t *testing.T) {
 	}
 	if cfg.RGB.Brightness != 100 {
 		t.Fatalf("expected cfg to remain unchanged, got %d", cfg.RGB.Brightness)
+	}
+}
+
+func TestRGBHandlersStyleAppliesAndPersists(t *testing.T) {
+	strip := &fakeStrip{}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: false, Style: "solid"})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	cfg := config.Default()
+	cfg.RGB.Style = "solid"
+	cfg.RGB.Speed = 50
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+
+	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath, &sync.Mutex{}))
+
+	resp, err := ipc.Send(path, "rgb.style", map[string]any{"name": "breathing", "speed": 75})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if !resp.OK {
+		t.Fatalf("expected ok=true, got error %q", resp.Error)
+	}
+
+	saved, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	if saved.RGB.Style != "breathing" || saved.RGB.Speed != 75 {
+		t.Fatalf("expected persisted style=breathing speed=75, got style=%q speed=%d", saved.RGB.Style, saved.RGB.Speed)
+	}
+	if store.State().Style != "breathing" || store.State().Speed != 75 {
+		t.Fatalf("expected store style=breathing speed=75, got %+v", store.State())
+	}
+}
+
+func TestRGBHandlersStyleWithoutSpeedKeepsConfiguredSpeed(t *testing.T) {
+	strip := &fakeStrip{}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: false, Style: "solid", Speed: 33})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	cfg := config.Default()
+	cfg.RGB.Style = "solid"
+	cfg.RGB.Speed = 33
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+
+	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath, &sync.Mutex{}))
+
+	resp, err := ipc.Send(path, "rgb.style", map[string]any{"name": "breathing"})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if !resp.OK {
+		t.Fatalf("expected ok=true, got error %q", resp.Error)
+	}
+	if store.State().Speed != 33 {
+		t.Fatalf("expected speed to remain 33 when omitted, got %d", store.State().Speed)
+	}
+}
+
+func TestRGBHandlersStyleRejectsInvalidNameWithoutMutatingCfg(t *testing.T) {
+	strip := &fakeStrip{}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: false, Style: "solid"})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	cfg := config.Default()
+	cfg.RGB.Style = "solid"
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+
+	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath, &sync.Mutex{}))
+
+	resp, err := ipc.Send(path, "rgb.style", map[string]any{"name": "rainbow"})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if resp.OK {
+		t.Fatalf("expected ok=false for an invalid style name")
+	}
+	if cfg.RGB.Style != "solid" {
+		t.Fatalf("expected cfg to remain unchanged for an invalid style, got %q", cfg.RGB.Style)
+	}
+}
+
+func TestRGBHandlersStyleRejectsOutOfRangeSpeedWithoutMutatingCfg(t *testing.T) {
+	strip := &fakeStrip{}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: false, Style: "solid", Speed: 50})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	cfg := config.Default()
+	cfg.RGB.Style = "solid"
+	cfg.RGB.Speed = 50
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+
+	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath, &sync.Mutex{}))
+
+	resp, err := ipc.Send(path, "rgb.style", map[string]any{"name": "breathing", "speed": 150})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if resp.OK {
+		t.Fatalf("expected ok=false for an out-of-range speed")
+	}
+	if cfg.RGB.Style != "solid" || cfg.RGB.Speed != 50 {
+		t.Fatalf("expected cfg to remain unchanged for an invalid speed, got style=%q speed=%d", cfg.RGB.Style, cfg.RGB.Speed)
 	}
 }
 

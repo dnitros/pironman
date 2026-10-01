@@ -4,15 +4,17 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/dnitros/pironman/internal/hardware"
 	"github.com/dnitros/pironman/internal/rgb"
 )
 
 var errBoom = errors.New("boom")
 
 type fakeStrip struct {
-	onCalls, offCalls, setColorCalls int
-	onErr, offErr                    error
-	lastR, lastG, lastB              byte
+	onCalls, offCalls, setColorCalls, writeFrameCalls int
+	onErr, offErr, writeFrameErr                      error
+	lastR, lastG, lastB                               byte
+	lastFrame                                         []hardware.Color
 }
 
 func (f *fakeStrip) On() error {
@@ -28,6 +30,12 @@ func (f *fakeStrip) Off() error {
 func (f *fakeStrip) SetColor(r, g, b byte) {
 	f.setColorCalls++
 	f.lastR, f.lastG, f.lastB = r, g, b
+}
+
+func (f *fakeStrip) WriteFrame(pixels []hardware.Color) error {
+	f.writeFrameCalls++
+	f.lastFrame = pixels
+	return f.writeFrameErr
 }
 
 func TestNewStoreAppliesEnabledInitialStateOnce(t *testing.T) {

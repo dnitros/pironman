@@ -1,17 +1,26 @@
 package rgb
 
 import (
+	"context"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"sync"
+	"time"
 
 	"github.com/dnitros/pironman/internal/hardware"
 )
+
+// sleep paces the animation loop between frames; overridden in white-box
+// tests so they don't wait on real wall-clock time.
+var sleep = time.Sleep
 
 type State struct {
 	Enabled    bool
 	Color      string
 	Brightness int
+	Style      string
+	Speed      int
 }
 
 func ParseColor(hexColor string) (r, g, b byte, err error) {
@@ -51,6 +60,9 @@ type Store struct {
 	mu    sync.Mutex
 	strip hardware.WS2812Strip
 	state State
+
+	animCancel context.CancelFunc
+	animDone   chan struct{}
 }
 
 func NewStore(strip hardware.WS2812Strip, initial State) (*Store, error) {
@@ -61,28 +73,44 @@ func NewStore(strip hardware.WS2812Strip, initial State) (*Store, error) {
 	return s, nil
 }
 
-func NewConfiguredStore(enabled bool, color string, brightness int) (*Store, error) {
+func NewConfiguredStore(enabled bool, color string, brightness int, style string, speed int) (*Store, error) {
 	r, g, b, err := ScaledColor(color, brightness)
 	if err != nil {
 		return nil, fmt.Errorf("parse configured RGB color/brightness: %w", err)
+	}
+	if err := ValidateStyle(style); err != nil {
+		return nil, fmt.Errorf("configured RGB style: %w", err)
+	}
+	if err := ValidateSpeed(speed); err != nil {
+		return nil, fmt.Errorf("configured RGB speed: %w", err)
 	}
 	strip, err := hardware.NewSPIWS2812(hardware.SPIPort, hardware.NumLEDs, r, g, b)
 	if err != nil {
 		return nil, fmt.Errorf("open WS2812 strip: %w", err)
 	}
-	return NewStore(strip, State{Enabled: enabled, Color: color, Brightness: brightness})
+	return NewStore(strip, State{Enabled: enabled, Color: color, Brightness: brightness, Style: style, Speed: speed})
 }
 
 func (s *Store) apply() error {
-	if s.state.Enabled {
-		return s.strip.On()
+	if !s.state.Enabled {
+		return s.strip.Off()
 	}
-	return s.strip.Off()
+	if isAnimated(s.state.Style) {
+		s.startAnimationLocked()
+		return nil
+	}
+	return s.strip.On()
 }
 
 func (s *Store) On() (State, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	if isAnimated(s.state.Style) {
+		s.state.Enabled = true
+		s.startAnimationLocked()
+		return s.state, nil
+	}
 
 	if err := s.strip.On(); err != nil {
 		return s.state, fmt.Errorf("turn RGB strip on: %w", err)
@@ -95,11 +123,117 @@ func (s *Store) Off() (State, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	s.stopAndWaitLocked()
 	if err := s.strip.Off(); err != nil {
 		return s.state, fmt.Errorf("turn RGB strip off: %w", err)
 	}
 	s.state.Enabled = false
 	return s.state, nil
+}
+
+// SetStyle switches the active style, optionally updating speed in the same
+// call. A nil speed leaves the currently configured speed unchanged.
+func (s *Store) SetStyle(name string, speed *int) (State, error) {
+	if err := ValidateStyle(name); err != nil {
+		return State{}, err
+	}
+	if speed != nil {
+		if err := ValidateSpeed(*speed); err != nil {
+			return State{}, err
+		}
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	wasAnimated := isAnimated(s.state.Style)
+	s.state.Style = name
+	if speed != nil {
+		s.state.Speed = *speed
+	}
+	nowAnimated := isAnimated(s.state.Style)
+
+	if !s.state.Enabled || wasAnimated == nowAnimated {
+		return s.state, nil
+	}
+
+	if nowAnimated {
+		s.startAnimationLocked()
+		return s.state, nil
+	}
+
+	s.stopAndWaitLocked()
+	if err := s.applyScaled(s.state.Color, s.state.Brightness); err != nil {
+		return s.state, err
+	}
+	return s.state, nil
+}
+
+// startAnimationLocked starts the self-paced animation goroutine. The caller
+// must hold mu and ensure no animation is already running.
+func (s *Store) startAnimationLocked() {
+	if s.animCancel != nil {
+		return
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	s.animCancel = cancel
+	s.animDone = done
+	go s.runAnimation(ctx, done)
+}
+
+// stopAndWaitLocked cancels any running animation loop and blocks until it
+// exits, briefly releasing mu while waiting. This is safe only because every
+// RGB-mutating IPC handler already serializes on a shared operation mutex
+// (see internal/handlers.RGBHandlers), so no other Store method can run
+// during the gap.
+func (s *Store) stopAndWaitLocked() {
+	if s.animCancel == nil {
+		return
+	}
+	cancel := s.animCancel
+	done := s.animDone
+	s.animCancel = nil
+	s.animDone = nil
+
+	cancel()
+	s.mu.Unlock()
+	<-done
+	s.mu.Lock()
+}
+
+func (s *Store) runAnimation(ctx context.Context, done chan<- struct{}) {
+	defer close(done)
+
+	for frame := 0; ; frame++ {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		s.mu.Lock()
+		style, hexColor, brightness, speed := s.state.Style, s.state.Color, s.state.Brightness, s.state.Speed
+		s.mu.Unlock()
+
+		r, g, b, err := ParseColor(hexColor)
+		if err != nil {
+			log.Printf("rgb: animation stopped, invalid configured color %q: %v", hexColor, err)
+			return
+		}
+
+		pixels, delay, err := animationFrame(style, frame, r, g, b, brightness, speed, hardware.NumLEDs)
+		if err != nil {
+			log.Printf("rgb: %v", err)
+			return
+		}
+
+		if err := s.strip.WriteFrame(pixels); err != nil {
+			log.Printf("rgb: animation frame write failed: %v", err)
+		}
+
+		sleep(delay)
+	}
 }
 
 func (s *Store) State() State {
@@ -155,7 +289,7 @@ func (s *Store) applyScaled(hex string, percent int) error {
 	}
 
 	s.strip.SetColor(r, g, b)
-	if !s.state.Enabled {
+	if !s.state.Enabled || isAnimated(s.state.Style) {
 		return nil
 	}
 

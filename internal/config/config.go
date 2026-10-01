@@ -30,6 +30,8 @@ type RGB struct {
 	Enabled    bool   `yaml:"enabled"`
 	Color      string `yaml:"color"`
 	Brightness int    `yaml:"brightness"`
+	Style      string `yaml:"style"`
+	Speed      int    `yaml:"speed"`
 }
 
 type OLED struct {
@@ -49,6 +51,8 @@ func Default() Config {
 			Enabled:    true,
 			Color:      "#00ff00",
 			Brightness: 80,
+			Style:      "solid",
+			Speed:      50,
 		},
 		OLED: OLED{
 			Enabled:               true,

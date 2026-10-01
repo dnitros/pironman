@@ -16,6 +16,7 @@ func RGBHandlers(store *rgb.Store, cfg *config.Config, cfgPath string, cfgMu *sy
 		"rgb.off":        rgbSetHandler(store, cfg, cfgPath, cfgMu, false),
 		"rgb.color":      rgbColorHandler(store, cfg, cfgPath, cfgMu),
 		"rgb.brightness": rgbBrightnessHandler(store, cfg, cfgPath, cfgMu),
+		"rgb.style":      rgbStyleHandler(store, cfg, cfgPath, cfgMu),
 	}
 }
 
@@ -78,6 +79,50 @@ func rgbColorHandler(store *rgb.Store, cfg *config.Config, cfgPath string, opMu 
 		}
 
 		return map[string]string{"color": state.Color}, nil
+	}
+}
+
+func rgbStyleHandler(store *rgb.Store, cfg *config.Config, cfgPath string, opMu *sync.Mutex) ipc.Handler {
+	return func(args map[string]any) (any, error) {
+		name, ok := args["name"].(string)
+		if !ok {
+			return nil, fmt.Errorf("rgb.style: missing \"name\" argument")
+		}
+		if err := rgb.ValidateStyle(name); err != nil {
+			return nil, err
+		}
+
+		var speed *int
+		if raw, present := args["speed"]; present {
+			f, ok := raw.(float64)
+			if !ok || math.IsNaN(f) || math.IsInf(f, 0) {
+				return nil, fmt.Errorf("rgb.style: invalid \"speed\" argument")
+			}
+			percent := int(f)
+			if err := rgb.ValidateSpeed(percent); err != nil {
+				return nil, err
+			}
+			speed = &percent
+		}
+
+		opMu.Lock()
+		defer opMu.Unlock()
+
+		if err := persistRGB(cfg, cfgPath, func(rgbCfg *config.RGB) {
+			rgbCfg.Style = name
+			if speed != nil {
+				rgbCfg.Speed = *speed
+			}
+		}); err != nil {
+			return nil, fmt.Errorf("persist RGB style: %w", err)
+		}
+
+		state, err := store.SetStyle(name, speed)
+		if err != nil {
+			return nil, fmt.Errorf("apply RGB style: %w", err)
+		}
+
+		return map[string]any{"style": state.Style, "speed": state.Speed}, nil
 	}
 }
 
