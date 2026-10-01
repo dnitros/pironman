@@ -32,12 +32,8 @@ func newRGBSetCmd(use, short string) *cobra.Command {
 }
 
 func runRGBSet(socketPath, use string) error {
-	resp, err := ipc.Send(socketPath, "rgb."+use, nil)
-	if err != nil {
-		return fmt.Errorf("rgb %s: daemon unreachable: %w", use, err)
-	}
-	if !resp.OK {
-		return fmt.Errorf("rgb %s: %s", use, resp.Error)
+	if _, err := sendCommand(socketPath, "rgb."+use, nil, "rgb "+use); err != nil {
+		return err
 	}
 
 	fmt.Printf("RGB strip turned %s\n", use)
@@ -56,12 +52,8 @@ func newRGBColorCmd() *cobra.Command {
 }
 
 func runRGBColor(socketPath, hex string) error {
-	resp, err := ipc.Send(socketPath, "rgb.color", map[string]any{"hex": hex})
-	if err != nil {
-		return fmt.Errorf("rgb color: daemon unreachable: %w", err)
-	}
-	if !resp.OK {
-		return fmt.Errorf("rgb color: %s", resp.Error)
+	if _, err := sendCommand(socketPath, "rgb.color", map[string]any{"hex": hex}, "rgb color"); err != nil {
+		return err
 	}
 
 	fmt.Printf("RGB strip color set to %s\n", hex)
@@ -88,12 +80,8 @@ func newRGBBrightnessCmd() *cobra.Command {
 }
 
 func runRGBBrightness(socketPath string, percent int) error {
-	resp, err := ipc.Send(socketPath, "rgb.brightness", map[string]any{"percent": percent})
-	if err != nil {
-		return fmt.Errorf("rgb brightness: daemon unreachable: %w", err)
-	}
-	if !resp.OK {
-		return fmt.Errorf("rgb brightness: %s", resp.Error)
+	if _, err := sendCommand(socketPath, "rgb.brightness", map[string]any{"percent": percent}, "rgb brightness"); err != nil {
+		return err
 	}
 
 	fmt.Printf("RGB strip brightness set to %d\n", percent)

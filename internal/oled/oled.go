@@ -3,6 +3,7 @@ package oled
 import (
 	"fmt"
 	"image"
+	"slices"
 	"sync"
 	"time"
 
@@ -164,8 +165,8 @@ func (m *Machine) SetPage(name string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	idx, ok := indexOf(m.pages, name)
-	if !ok {
+	idx := slices.Index(m.pages, name)
+	if idx == -1 {
 		return fmt.Errorf("oled: unknown page %q", name)
 	}
 
@@ -207,15 +208,6 @@ func (m *Machine) resetScrollLocked() {
 	m.lastScroll = m.clock.Now()
 }
 
-func indexOf(pages []string, name string) (int, bool) {
-	for i, p := range pages {
-		if p == name {
-			return i, true
-		}
-	}
-	return 0, false
-}
-
 func (m *Machine) renderLocked() error {
 	switch m.terminal {
 	case terminalShutdownConfirmation:
@@ -238,30 +230,19 @@ func (m *Machine) renderLocked() error {
 func (m *Machine) pageLinesLocked() ([]string, error) {
 	page := m.pages[m.pageIdx]
 
+	snap, err := m.stats.Snapshot()
+	if err != nil {
+		return nil, fmt.Errorf("read stats: %w", err)
+	}
+
 	switch page {
 	case PageMix:
-		snap, err := m.stats.Snapshot()
-		if err != nil {
-			return nil, fmt.Errorf("read stats: %w", err)
-		}
 		return mixLines(snap, m.scrollIdx), nil
 	case PagePerformance:
-		snap, err := m.stats.Snapshot()
-		if err != nil {
-			return nil, fmt.Errorf("read stats: %w", err)
-		}
 		return performanceLines(snap), nil
 	case PageIPs:
-		snap, err := m.stats.Snapshot()
-		if err != nil {
-			return nil, fmt.Errorf("read stats: %w", err)
-		}
 		return ipsLines(snap, m.scrollIdx), nil
 	case PageDisk:
-		snap, err := m.stats.Snapshot()
-		if err != nil {
-			return nil, fmt.Errorf("read stats: %w", err)
-		}
 		return diskLines(snap, m.scrollIdx), nil
 	default:
 		return nil, fmt.Errorf("oled: unknown page %q", page)

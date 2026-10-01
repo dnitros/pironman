@@ -30,12 +30,8 @@ func newFanSetCmd(use, short string) *cobra.Command {
 }
 
 func runFanSet(socketPath, use string) error {
-	resp, err := ipc.Send(socketPath, "fan."+use, nil)
-	if err != nil {
-		return fmt.Errorf("fan %s: daemon unreachable: %w", use, err)
-	}
-	if !resp.OK {
-		return fmt.Errorf("fan %s: %s", use, resp.Error)
+	if _, err := sendCommand(socketPath, "fan."+use, nil, "fan "+use); err != nil {
+		return err
 	}
 
 	fmt.Printf("case fan set to %s\n", use)
