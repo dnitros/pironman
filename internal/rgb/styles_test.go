@@ -5,11 +5,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dnitros/pironman/internal/hardware"
 	"github.com/dnitros/pironman/internal/rgb"
 )
 
 func TestValidateStyleAcceptsKnownStyles(t *testing.T) {
-	for _, name := range []string{"solid", "breathing"} {
+	for _, name := range []string{"solid", "breathing", "flow", "flow_reverse"} {
 		if err := rgb.ValidateStyle(name); err != nil {
 			t.Fatalf("ValidateStyle(%q): unexpected error: %v", name, err)
 		}
@@ -98,6 +99,98 @@ func TestBreathingDelayIsMonotonicallyDecreasing(t *testing.T) {
 		got := rgb.BreathingDelay(speed)
 		if got > prev {
 			t.Fatalf("BreathingDelay(%d) = %v, expected <= previous %v", speed, got, prev)
+		}
+		prev = got
+	}
+}
+
+func litIndex(t *testing.T, pixels []hardware.Color) int {
+	t.Helper()
+	lit := -1
+	for i, p := range pixels {
+		if p != (hardware.Color{}) {
+			if lit != -1 {
+				t.Fatalf("expected exactly one lit pixel, found a second at index %d (first at %d)", i, lit)
+			}
+			lit = i
+		}
+	}
+	if lit == -1 {
+		t.Fatalf("expected exactly one lit pixel, found none")
+	}
+	return lit
+}
+
+func TestFlowFrameLightsExactlyOnePixelAtStart(t *testing.T) {
+	pixels := rgb.FlowFrame(0, 0xff, 0, 0, 100, 4, false)
+	if len(pixels) != 4 {
+		t.Fatalf("expected 4 pixels, got %d", len(pixels))
+	}
+	if got := litIndex(t, pixels); got != 0 {
+		t.Fatalf("FlowFrame(0, ...): expected lit index 0, got %d", got)
+	}
+}
+
+func TestFlowFrameAdvancesOnePositionPerFrame(t *testing.T) {
+	for frame, want := range map[int]int{1: 1, 2: 2, 3: 3} {
+		got := litIndex(t, rgb.FlowFrame(frame, 0xff, 0, 0, 100, 4, false))
+		if got != want {
+			t.Fatalf("FlowFrame(%d, ...): expected lit index %d, got %d", frame, want, got)
+		}
+	}
+}
+
+func TestFlowFrameWrapsAtStripLength(t *testing.T) {
+	got := litIndex(t, rgb.FlowFrame(4, 0xff, 0, 0, 100, 4, false))
+	if got != 0 {
+		t.Fatalf("FlowFrame(4, ...): expected to wrap to index 0, got %d", got)
+	}
+}
+
+func TestFlowFrameReverseStartsAtLastIndex(t *testing.T) {
+	got := litIndex(t, rgb.FlowFrame(0, 0xff, 0, 0, 100, 4, true))
+	if got != 3 {
+		t.Fatalf("FlowFrame(0, ..., reverse): expected lit index 3, got %d", got)
+	}
+}
+
+func TestFlowFrameReverseAdvancesInOppositeDirection(t *testing.T) {
+	for frame, want := range map[int]int{1: 2, 2: 1, 3: 0, 4: 3} {
+		got := litIndex(t, rgb.FlowFrame(frame, 0xff, 0, 0, 100, 4, true))
+		if got != want {
+			t.Fatalf("FlowFrame(%d, ..., reverse): expected lit index %d, got %d", frame, want, got)
+		}
+	}
+}
+
+func TestFlowFrameScalesLitPixelByBrightness(t *testing.T) {
+	full := rgb.FlowFrame(0, 0xff, 0, 0, 100, 4, false)
+	half := rgb.FlowFrame(0, 0xff, 0, 0, 50, 4, false)
+	if half[0].R >= full[0].R {
+		t.Fatalf("expected halving brightness to dim the lit pixel: full=%d half=%d", full[0].R, half[0].R)
+	}
+}
+
+func TestFlowDelayAtSpeedZeroIsSlowest(t *testing.T) {
+	got := rgb.FlowDelay(0)
+	if got != 500*time.Millisecond {
+		t.Fatalf("FlowDelay(0) = %v, want 500ms", got)
+	}
+}
+
+func TestFlowDelayAtSpeedHundredIsFastest(t *testing.T) {
+	got := rgb.FlowDelay(100)
+	if got != 100*time.Millisecond {
+		t.Fatalf("FlowDelay(100) = %v, want 100ms", got)
+	}
+}
+
+func TestFlowDelayIsMonotonicallyDecreasing(t *testing.T) {
+	prev := rgb.FlowDelay(0)
+	for speed := 10; speed <= 100; speed += 10 {
+		got := rgb.FlowDelay(speed)
+		if got > prev {
+			t.Fatalf("FlowDelay(%d) = %v, expected <= previous %v", speed, got, prev)
 		}
 		prev = got
 	}

@@ -71,7 +71,7 @@ rgb:
   enabled: true
   color: "#00ff00"
   brightness: 80
-  style: solid    # solid | breathing (Phase 5, shipped) | flow | flow_reverse |
+  style: solid    # solid | breathing | flow | flow_reverse (Phase 5, shipped) |
                   # rainbow | rainbow_reverse | hue_cycle (Phase 5, remaining)
   speed: 50       # 0-100; meaningless for the non-animated solid style
 

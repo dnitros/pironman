@@ -9,8 +9,10 @@ import (
 )
 
 const (
-	StyleSolid     = "solid"
-	StyleBreathing = "breathing"
+	StyleSolid       = "solid"
+	StyleBreathing   = "breathing"
+	StyleFlow        = "flow"
+	StyleFlowReverse = "flow_reverse"
 )
 
 type frameFunc func(frame int, r, g, b byte, brightnessPercent, speedPercent, numLEDs int) ([]hardware.Color, time.Duration)
@@ -24,6 +26,12 @@ var styleDefs = []styleDef{
 	{name: StyleSolid},
 	{name: StyleBreathing, frame: func(frame int, r, g, b byte, brightnessPercent, speedPercent, numLEDs int) ([]hardware.Color, time.Duration) {
 		return BreathingFrame(frame, r, g, b, brightnessPercent, numLEDs), BreathingDelay(speedPercent)
+	}},
+	{name: StyleFlow, frame: func(frame int, r, g, b byte, brightnessPercent, speedPercent, numLEDs int) ([]hardware.Color, time.Duration) {
+		return FlowFrame(frame, r, g, b, brightnessPercent, numLEDs, false), FlowDelay(speedPercent)
+	}},
+	{name: StyleFlowReverse, frame: func(frame int, r, g, b byte, brightnessPercent, speedPercent, numLEDs int) ([]hardware.Color, time.Duration) {
+		return FlowFrame(frame, r, g, b, brightnessPercent, numLEDs, true), FlowDelay(speedPercent)
 	}},
 }
 
@@ -92,6 +100,29 @@ const (
 func BreathingDelay(speedPercent int) time.Duration {
 	span := breathingDelayMax - breathingDelayMin
 	return breathingDelayMax - span*time.Duration(speedPercent)/100
+}
+
+// FlowFrame lights exactly one LED at a time, advancing one physical index
+// per frame; reverse walks the indices in the opposite order.
+func FlowFrame(frame int, r, g, b byte, brightnessPercent, numLEDs int, reverse bool) []hardware.Color {
+	pos := frame % numLEDs
+	if reverse {
+		pos = numLEDs - 1 - pos
+	}
+
+	pixels := make([]hardware.Color, numLEDs)
+	pixels[pos] = hardware.Color{R: scale(r, brightnessPercent), G: scale(g, brightnessPercent), B: scale(b, brightnessPercent)}
+	return pixels
+}
+
+const (
+	flowDelayMax = 500 * time.Millisecond
+	flowDelayMin = 100 * time.Millisecond
+)
+
+func FlowDelay(speedPercent int) time.Duration {
+	span := flowDelayMax - flowDelayMin
+	return flowDelayMax - span*time.Duration(speedPercent)/100
 }
 
 func animationFrame(style string, frame int, r, g, b byte, brightnessPercent, speedPercent, numLEDs int) ([]hardware.Color, time.Duration, error) {
