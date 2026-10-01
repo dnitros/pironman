@@ -76,8 +76,6 @@ func isAnimated(style string) bool {
 	return ok && d.frame != nil
 }
 
-// speedToDelay maps a 0-100 speed percentage linearly onto a frame delay,
-// where 0 is slowest (maxDelay) and 100 is fastest (minDelay).
 func speedToDelay(speedPercent int, maxDelay, minDelay time.Duration) time.Duration {
 	span := maxDelay - minDelay
 	return maxDelay - span*time.Duration(speedPercent)/100
@@ -87,8 +85,6 @@ func scaleColor(r, g, b byte, percent int) hardware.Color {
 	return hardware.Color{R: scale(r, percent), G: scale(g, percent), B: scale(b, percent)}
 }
 
-// mirrorIndex returns i unchanged, or its mirror image across numLEDs when
-// reverse is set, so a chase/rotation can walk the opposite physical direction.
 func mirrorIndex(i, numLEDs int, reverse bool) int {
 	if reverse {
 		return numLEDs - 1 - i
@@ -149,8 +145,6 @@ func FlowDelay(speedPercent int) time.Duration {
 	return speedToDelay(speedPercent, flowDelayMax, flowDelayMin)
 }
 
-// HSLToRGB converts an HSL color (h in degrees, wrapping outside [0,360); s
-// and l as percentages 0-100) to RGB.
 func HSLToRGB(h float64, s, l int) (r, g, b byte) {
 	hh := math.Mod(h, 360)
 	if hh < 0 {
@@ -184,9 +178,6 @@ func HSLToRGB(h float64, s, l int) (r, g, b byte) {
 
 const rainbowCycleDegrees = 360
 
-// RainbowFrame assigns an evenly-spaced hue to each LED (full saturation,
-// scaled by brightnessPercent), rotating by one degree per frame; reverse
-// assigns the same hue pattern to LEDs in reverse index order.
 func RainbowFrame(frame int, brightnessPercent, numLEDs int, reverse bool) []hardware.Color {
 	phase := frame % rainbowCycleDegrees
 
