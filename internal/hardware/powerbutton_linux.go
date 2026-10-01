@@ -26,10 +26,12 @@ const (
 
 	evdevIOCType = 'E'
 
+	// Linux ioctl numbers for EVIOCGBIT(EV_KEY) and EVIOCGRAB, from <linux/input.h>.
 	eviocgbitEVKEYNr = 0x20 + evKey
 	eviocgrabNr      = 0x90
 )
 
+// ioctlCode replicates <asm-generic/ioctl.h>'s _IOC encoding macro.
 func ioctlCode(dir, nr int, size uintptr) uint32 {
 	return uint32(dir)<<30 | uint32(size)<<16 | uint32(evdevIOCType)<<8 | uint32(nr)
 }

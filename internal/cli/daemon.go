@@ -321,7 +321,7 @@ func runDaemon(ctx context.Context) error {
 	}
 	fmt.Printf("pironman daemon: loaded config from %s\n", cfgPath)
 
-	rgbStore, err := rgb.NewConfiguredStore(cfg.RGB.Enabled, cfg.RGB.Color, cfg.RGB.Brightness)
+	rgbStore, err := rgb.NewConfiguredStore(cfg.RGB.Enabled, cfg.RGB.Color, cfg.RGB.Brightness, cfg.RGB.Style, cfg.RGB.Speed)
 	if err != nil {
 		return fmt.Errorf("apply initial RGB state: %w", err)
 	}

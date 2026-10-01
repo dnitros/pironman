@@ -46,6 +46,36 @@ func TestSPIWS2812SetColorUpdatesStoredColor(t *testing.T) {
 	}
 }
 
+func TestEncodeFrameMatchesEncodeWS2812ForUniformPixels(t *testing.T) {
+	pixels := []Color{{R: 0x11, G: 0x22, B: 0x33}, {R: 0x11, G: 0x22, B: 0x33}}
+	got := encodeFrame(pixels)
+	want := encodeWS2812(2, 0x11, 0x22, 0x33)
+	if len(got) != len(want) {
+		t.Fatalf("length mismatch: got %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("byte %d: got 0x%02x, want 0x%02x", i, got[i], want[i])
+		}
+	}
+}
+
+func TestEncodeFramePerPixelColors(t *testing.T) {
+	got := encodeFrame([]Color{{R: 0, G: 0, B: 0}, {R: 0xff, G: 0xff, B: 0xff}})
+	wantPixel0 := []byte{0x92, 0x49, 0x24, 0x92, 0x49, 0x24, 0x92, 0x49, 0x24}
+	wantPixel1 := []byte{0xdb, 0x6d, 0xb6, 0xdb, 0x6d, 0xb6, 0xdb, 0x6d, 0xb6}
+	for i, b := range wantPixel0 {
+		if got[i] != b {
+			t.Fatalf("pixel 0 byte %d: got 0x%02x, want 0x%02x", i, got[i], b)
+		}
+	}
+	for i, b := range wantPixel1 {
+		if got[9+i] != b {
+			t.Fatalf("pixel 1 byte %d: got 0x%02x, want 0x%02x", i, got[9+i], b)
+		}
+	}
+}
+
 func TestEncodeWS2812ResetTailIsZero(t *testing.T) {
 	got := encodeWS2812(1, 0xff, 0xff, 0xff)
 	tail := got[len(got)-resetBytes:]

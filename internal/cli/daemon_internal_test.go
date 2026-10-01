@@ -335,9 +335,10 @@ type fakeStrip struct {
 	onCalls, offCalls int
 }
 
-func (f *fakeStrip) On() error             { f.onCalls++; return nil }
-func (f *fakeStrip) Off() error            { f.offCalls++; return nil }
-func (f *fakeStrip) SetColor(r, g, b byte) {}
+func (f *fakeStrip) On() error                                { f.onCalls++; return nil }
+func (f *fakeStrip) Off() error                               { f.offCalls++; return nil }
+func (f *fakeStrip) SetColor(r, g, b byte)                    {}
+func (f *fakeStrip) WriteFrame(pixels []hardware.Color) error { return nil }
 
 func newTestIPCServer(t *testing.T) *ipc.Server {
 	t.Helper()

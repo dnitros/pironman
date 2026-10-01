@@ -25,6 +25,7 @@ type SSD1306Display interface {
 	Draw(img *image.Gray) error
 }
 
+// ssd1306InitCommands is the SSD1306's documented power-on init sequence.
 var ssd1306InitCommands = []byte{
 	0xAE,
 	0xD5, 0x80,

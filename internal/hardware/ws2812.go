@@ -19,6 +19,11 @@ type WS2812Strip interface {
 	On() error
 	Off() error
 	SetColor(r, g, b byte)
+	WriteFrame(pixels []Color) error
+}
+
+type Color struct {
+	R, G, B byte
 }
 
 type SPIWS2812 struct {
@@ -60,6 +65,13 @@ func (s *SPIWS2812) SetColor(r, g, b byte) {
 	s.r, s.g, s.b = r, g, b
 }
 
+func (s *SPIWS2812) WriteFrame(pixels []Color) error {
+	if err := s.conn.Tx(encodeFrame(pixels), nil); err != nil {
+		return fmt.Errorf("write WS2812 frame: %w", err)
+	}
+	return nil
+}
+
 const (
 	bitsPerColorBit = 3
 	// resetBytes is the trailing all-zero latch gap: 140 bytes * 8 bits /
@@ -75,7 +87,15 @@ const (
 var wsBitPattern = [2]byte{0b100, 0b110}
 
 func encodeWS2812(numLEDs int, r, g, b byte) []byte {
-	buf := make([]byte, 0, numLEDs*9+resetBytes)
+	pixels := make([]Color, numLEDs)
+	for i := range pixels {
+		pixels[i] = Color{R: r, G: g, B: b}
+	}
+	return encodeFrame(pixels)
+}
+
+func encodeFrame(pixels []Color) []byte {
+	buf := make([]byte, 0, len(pixels)*9+resetBytes)
 
 	var acc uint32
 	var accBits int
@@ -91,10 +111,10 @@ func encodeWS2812(numLEDs int, r, g, b byte) []byte {
 		}
 	}
 
-	for i := 0; i < numLEDs; i++ {
-		writeByte(g)
-		writeByte(r)
-		writeByte(b)
+	for _, p := range pixels {
+		writeByte(p.G)
+		writeByte(p.R)
+		writeByte(p.B)
 	}
 
 	return append(buf, make([]byte, resetBytes)...)
