@@ -146,7 +146,9 @@ func (s *Store) SetStyle(name string, speed *int) (State, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	wasAnimated := isAnimated(s.state.Style)
+	prevStyle, prevSpeed := s.state.Style, s.state.Speed
+	wasAnimated := isAnimated(prevStyle)
+
 	s.state.Style = name
 	if speed != nil {
 		s.state.Speed = *speed
@@ -164,6 +166,10 @@ func (s *Store) SetStyle(name string, speed *int) (State, error) {
 
 	s.stopAndWaitLocked()
 	if err := s.applyScaled(s.state.Color, s.state.Brightness); err != nil {
+		// Roll back so State() keeps reflecting what's actually on the strip,
+		// matching SetColor/SetBrightness's existing revert-on-failure behavior.
+		s.state.Style, s.state.Speed = prevStyle, prevSpeed
+		s.startAnimationLocked()
 		return s.state, err
 	}
 	return s.state, nil
