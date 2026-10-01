@@ -609,6 +609,77 @@ func TestRGBHandlersStyleRejectsOutOfRangeSpeedWithoutMutatingCfg(t *testing.T) 
 	}
 }
 
+func TestRGBHandlersStylePropagatesPersistErrorWithoutMutatingCfg(t *testing.T) {
+	strip := &fakeStrip{}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: false, Style: "solid"})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	cfg := config.Default()
+	cfg.RGB.Style = "solid"
+
+	blocker := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(blocker, nil, 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	cfgPath := filepath.Join(blocker, "config.yaml")
+
+	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath, &sync.Mutex{}))
+
+	resp, err := ipc.Send(path, "rgb.style", map[string]any{"name": "breathing"})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if resp.OK {
+		t.Fatalf("expected ok=false when persisting fails")
+	}
+	if cfg.RGB.Style != "solid" {
+		t.Fatalf("expected cfg to remain unchanged when persist fails, got %q", cfg.RGB.Style)
+	}
+	if store.State().Style != "solid" {
+		t.Fatalf("expected the store to never be touched when persisting fails, got style=%q", store.State().Style)
+	}
+}
+
+func TestRGBHandlersStyleCommitsPersistedStateEvenWhenStripFails(t *testing.T) {
+	strip := &fakeStrip{}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: true, Style: "breathing", Color: "#ffffff", Brightness: 100, Speed: 50})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	t.Cleanup(func() { store.Off() })
+	strip.onErr = errors.New("spi write failed")
+
+	cfg := config.Default()
+	cfg.RGB.Enabled = true
+	cfg.RGB.Style = "breathing"
+	cfg.RGB.Color = "#ffffff"
+	cfg.RGB.Brightness = 100
+	cfg.RGB.Speed = 50
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+
+	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath, &sync.Mutex{}))
+
+	resp, err := ipc.Send(path, "rgb.style", map[string]any{"name": "solid"})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if resp.OK {
+		t.Fatalf("expected ok=false when the strip write fails")
+	}
+
+	saved, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	if saved.RGB.Style != "solid" {
+		t.Fatalf("expected the intended style to be persisted despite the strip failure, got %q", saved.RGB.Style)
+	}
+	if cfg.RGB.Style != "solid" {
+		t.Fatalf("expected cfg to reflect the persisted style despite the strip failure, got %q", cfg.RGB.Style)
+	}
+}
+
 func TestRGBHandlersBrightnessCommitsPersistedBrightnessEvenWhenStripFails(t *testing.T) {
 	strip := &fakeStrip{}
 	store, err := rgb.NewStore(strip, rgb.State{Enabled: true, Color: "#ffffff", Brightness: 100})
