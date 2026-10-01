@@ -2,6 +2,7 @@ package rgb
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -9,10 +10,12 @@ import (
 )
 
 const (
-	StyleSolid       = "solid"
-	StyleBreathing   = "breathing"
-	StyleFlow        = "flow"
-	StyleFlowReverse = "flow_reverse"
+	StyleSolid          = "solid"
+	StyleBreathing      = "breathing"
+	StyleFlow           = "flow"
+	StyleFlowReverse    = "flow_reverse"
+	StyleRainbow        = "rainbow"
+	StyleRainbowReverse = "rainbow_reverse"
 )
 
 type frameFunc func(frame int, r, g, b byte, brightnessPercent, speedPercent, numLEDs int) ([]hardware.Color, time.Duration)
@@ -32,6 +35,12 @@ var styleDefs = []styleDef{
 	}},
 	{name: StyleFlowReverse, frame: func(frame int, r, g, b byte, brightnessPercent, speedPercent, numLEDs int) ([]hardware.Color, time.Duration) {
 		return FlowFrame(frame, r, g, b, brightnessPercent, numLEDs, true), FlowDelay(speedPercent)
+	}},
+	{name: StyleRainbow, frame: func(frame int, r, g, b byte, brightnessPercent, speedPercent, numLEDs int) ([]hardware.Color, time.Duration) {
+		return RainbowFrame(frame, brightnessPercent, numLEDs, false), RainbowDelay(speedPercent)
+	}},
+	{name: StyleRainbowReverse, frame: func(frame int, r, g, b byte, brightnessPercent, speedPercent, numLEDs int) ([]hardware.Color, time.Duration) {
+		return RainbowFrame(frame, brightnessPercent, numLEDs, true), RainbowDelay(speedPercent)
 	}},
 }
 
@@ -123,6 +132,70 @@ const (
 func FlowDelay(speedPercent int) time.Duration {
 	span := flowDelayMax - flowDelayMin
 	return flowDelayMax - span*time.Duration(speedPercent)/100
+}
+
+// HSLToRGB converts an HSL color (h in degrees, wrapping outside [0,360); s
+// and l as percentages 0-100) to RGB.
+func HSLToRGB(h float64, s, l int) (r, g, b byte) {
+	hh := math.Mod(h, 360)
+	if hh < 0 {
+		hh += 360
+	}
+	sf := float64(s) / 100
+	lf := float64(l) / 100
+
+	c := (1 - math.Abs(2*lf-1)) * sf
+	x := c * (1 - math.Abs(math.Mod(hh/60, 2)-1))
+	m := lf - c/2
+
+	var rp, gp, bp float64
+	switch {
+	case hh < 60:
+		rp, gp, bp = c, x, 0
+	case hh < 120:
+		rp, gp, bp = x, c, 0
+	case hh < 180:
+		rp, gp, bp = 0, c, x
+	case hh < 240:
+		rp, gp, bp = 0, x, c
+	case hh < 300:
+		rp, gp, bp = x, 0, c
+	default:
+		rp, gp, bp = c, 0, x
+	}
+
+	return byte((rp + m) * 255), byte((gp + m) * 255), byte((bp + m) * 255)
+}
+
+const rainbowCycleDegrees = 360
+
+// RainbowFrame assigns an evenly-spaced hue to each LED (full saturation,
+// scaled by brightnessPercent), rotating by one degree per frame; reverse
+// assigns the same hue pattern to LEDs in reverse index order.
+func RainbowFrame(frame int, brightnessPercent, numLEDs int, reverse bool) []hardware.Color {
+	phase := frame % rainbowCycleDegrees
+
+	pixels := make([]hardware.Color, numLEDs)
+	for i := range pixels {
+		idx := i
+		if reverse {
+			idx = numLEDs - 1 - i
+		}
+		hue := float64((idx*rainbowCycleDegrees/numLEDs + phase) % rainbowCycleDegrees)
+		r, g, b := HSLToRGB(hue, 100, 50)
+		pixels[i] = hardware.Color{R: scale(r, brightnessPercent), G: scale(g, brightnessPercent), B: scale(b, brightnessPercent)}
+	}
+	return pixels
+}
+
+const (
+	rainbowDelayMax = 100 * time.Millisecond
+	rainbowDelayMin = 5 * time.Millisecond
+)
+
+func RainbowDelay(speedPercent int) time.Duration {
+	span := rainbowDelayMax - rainbowDelayMin
+	return rainbowDelayMax - span*time.Duration(speedPercent)/100
 }
 
 func animationFrame(style string, frame int, r, g, b byte, brightnessPercent, speedPercent, numLEDs int) ([]hardware.Color, time.Duration, error) {

@@ -10,7 +10,7 @@ import (
 )
 
 func TestValidateStyleAcceptsKnownStyles(t *testing.T) {
-	for _, name := range []string{"solid", "breathing", "flow", "flow_reverse"} {
+	for _, name := range []string{"solid", "breathing", "flow", "flow_reverse", "rainbow", "rainbow_reverse"} {
 		if err := rgb.ValidateStyle(name); err != nil {
 			t.Fatalf("ValidateStyle(%q): unexpected error: %v", name, err)
 		}
@@ -18,7 +18,7 @@ func TestValidateStyleAcceptsKnownStyles(t *testing.T) {
 }
 
 func TestValidateStyleRejectsUnknownName(t *testing.T) {
-	err := rgb.ValidateStyle("rainbow")
+	err := rgb.ValidateStyle("hue_cycle")
 	if err == nil {
 		t.Fatalf("expected an error for an unimplemented style name")
 	}
@@ -191,6 +191,142 @@ func TestFlowDelayIsMonotonicallyDecreasing(t *testing.T) {
 		got := rgb.FlowDelay(speed)
 		if got > prev {
 			t.Fatalf("FlowDelay(%d) = %v, expected <= previous %v", speed, got, prev)
+		}
+		prev = got
+	}
+}
+
+func TestHSLToRGBPrimaryHuesAtFullSaturationHalfLightness(t *testing.T) {
+	cases := []struct {
+		hue     float64
+		r, g, b byte
+	}{
+		{0, 255, 0, 0},
+		{60, 255, 255, 0},
+		{120, 0, 255, 0},
+		{180, 0, 255, 255},
+		{240, 0, 0, 255},
+		{300, 255, 0, 255},
+	}
+	for _, c := range cases {
+		r, g, b := rgb.HSLToRGB(c.hue, 100, 50)
+		if r != c.r || g != c.g || b != c.b {
+			t.Fatalf("HSLToRGB(%v, 100, 50) = (%d,%d,%d), want (%d,%d,%d)", c.hue, r, g, b, c.r, c.g, c.b)
+		}
+	}
+}
+
+func TestHSLToRGBZeroLightnessIsBlackRegardlessOfHue(t *testing.T) {
+	for _, hue := range []float64{0, 90, 200, 359} {
+		r, g, b := rgb.HSLToRGB(hue, 100, 0)
+		if r != 0 || g != 0 || b != 0 {
+			t.Fatalf("HSLToRGB(%v, 100, 0) = (%d,%d,%d), want black", hue, r, g, b)
+		}
+	}
+}
+
+func TestHSLToRGBFullLightnessIsWhiteRegardlessOfHue(t *testing.T) {
+	for _, hue := range []float64{0, 90, 200, 359} {
+		r, g, b := rgb.HSLToRGB(hue, 100, 100)
+		if r != 255 || g != 255 || b != 255 {
+			t.Fatalf("HSLToRGB(%v, 100, 100) = (%d,%d,%d), want white", hue, r, g, b)
+		}
+	}
+}
+
+func TestHSLToRGBZeroSaturationIsGreyRegardlessOfHue(t *testing.T) {
+	for _, hue := range []float64{0, 90, 200, 359} {
+		r, g, b := rgb.HSLToRGB(hue, 0, 50)
+		if r != g || g != b {
+			t.Fatalf("HSLToRGB(%v, 0, 50) = (%d,%d,%d), want r == g == b", hue, r, g, b)
+		}
+	}
+}
+
+func TestHSLToRGBNormalizesHueOutsideZeroTo360(t *testing.T) {
+	r1, g1, b1 := rgb.HSLToRGB(0, 100, 50)
+	r2, g2, b2 := rgb.HSLToRGB(360, 100, 50)
+	if r1 != r2 || g1 != g2 || b1 != b2 {
+		t.Fatalf("HSLToRGB(360, ...) = (%d,%d,%d), want same as HSLToRGB(0, ...) = (%d,%d,%d)", r2, g2, b2, r1, g1, b1)
+	}
+}
+
+func TestRainbowFrameAssignsEvenlySpacedHuesAtFrameZero(t *testing.T) {
+	pixels := rgb.RainbowFrame(0, 100, 6, false)
+	if len(pixels) != 6 {
+		t.Fatalf("expected 6 pixels, got %d", len(pixels))
+	}
+	want := []hardware.Color{
+		{R: 255, G: 0, B: 0},
+		{R: 255, G: 255, B: 0},
+		{R: 0, G: 255, B: 0},
+		{R: 0, G: 255, B: 255},
+		{R: 0, G: 0, B: 255},
+		{R: 255, G: 0, B: 255},
+	}
+	for i := range want {
+		if pixels[i] != want[i] {
+			t.Fatalf("pixel %d = %+v, want %+v", i, pixels[i], want[i])
+		}
+	}
+}
+
+func TestRainbowFrameRotatesByOneDegreePerFrame(t *testing.T) {
+	atFrame0 := rgb.RainbowFrame(0, 100, 6, false)
+	atFrame60 := rgb.RainbowFrame(60, 100, 6, false)
+	if atFrame60[0] != atFrame0[1] {
+		t.Fatalf("RainbowFrame(60, ...)[0] = %+v, want it to match RainbowFrame(0, ...)[1] = %+v (one full 60-degree rotation)", atFrame60[0], atFrame0[1])
+	}
+}
+
+func TestRainbowFrameWrapsAtCycleLength(t *testing.T) {
+	atFrame0 := rgb.RainbowFrame(0, 100, 6, false)
+	atFrame360 := rgb.RainbowFrame(360, 100, 6, false)
+	for i := range atFrame0 {
+		if atFrame0[i] != atFrame360[i] {
+			t.Fatalf("pixel %d: expected the 360-degree cycle to repeat: frame 0 = %+v, frame 360 = %+v", i, atFrame0[i], atFrame360[i])
+		}
+	}
+}
+
+func TestRainbowReverseFrameAssignsPatternInReverseIndexOrder(t *testing.T) {
+	forward := rgb.RainbowFrame(0, 100, 6, false)
+	reverse := rgb.RainbowFrame(0, 100, 6, true)
+	for i := range forward {
+		if reverse[i] != forward[len(forward)-1-i] {
+			t.Fatalf("reverse pixel %d = %+v, want forward pixel %d = %+v", i, reverse[i], len(forward)-1-i, forward[len(forward)-1-i])
+		}
+	}
+}
+
+func TestRainbowFrameScalesByBrightness(t *testing.T) {
+	full := rgb.RainbowFrame(0, 100, 6, false)
+	half := rgb.RainbowFrame(0, 50, 6, false)
+	if half[0].R >= full[0].R {
+		t.Fatalf("expected halving brightness to dim the frame: full=%d half=%d", full[0].R, half[0].R)
+	}
+}
+
+func TestRainbowDelayAtSpeedZeroIsSlowest(t *testing.T) {
+	got := rgb.RainbowDelay(0)
+	if got != 100*time.Millisecond {
+		t.Fatalf("RainbowDelay(0) = %v, want 100ms", got)
+	}
+}
+
+func TestRainbowDelayAtSpeedHundredIsFastest(t *testing.T) {
+	got := rgb.RainbowDelay(100)
+	if got != 5*time.Millisecond {
+		t.Fatalf("RainbowDelay(100) = %v, want 5ms", got)
+	}
+}
+
+func TestRainbowDelayIsMonotonicallyDecreasing(t *testing.T) {
+	prev := rgb.RainbowDelay(0)
+	for speed := 10; speed <= 100; speed += 10 {
+		got := rgb.RainbowDelay(speed)
+		if got > prev {
+			t.Fatalf("RainbowDelay(%d) = %v, expected <= previous %v", speed, got, prev)
 		}
 		prev = got
 	}
