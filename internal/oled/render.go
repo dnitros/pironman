@@ -66,8 +66,6 @@ func formatDiskSize(usedBytes, totalBytes uint64) string {
 	return fmt.Sprintf("%.1f/%.1f%s", scaledUsed, scaledTotal, units[unit])
 }
 
-// paginate splits total items into fixed-size groups and returns the
-// start/end slice bounds of the group at idx, wrapping idx by group count.
 func paginate(total, size, idx int) (start, end int) {
 	groups := (total + size - 1) / size
 	start = (idx % groups) * size

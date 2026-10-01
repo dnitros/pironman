@@ -8,8 +8,6 @@ import (
 	"github.com/dnitros/pironman/internal/ipc"
 )
 
-// sendCommand sends cmd over the daemon socket and turns a transport failure
-// or an !OK response into a single error prefixed with label.
 func sendCommand(socketPath, cmd string, args map[string]any, label string) (*ipc.Response, error) {
 	resp, err := ipc.Send(socketPath, cmd, args)
 	if err != nil {
