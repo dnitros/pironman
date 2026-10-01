@@ -59,7 +59,7 @@ func isAnimated(style string) bool {
 	return ok && d.frame != nil
 }
 
-// 200 matches sunfounder/pm_auto's ws2812.py breathing cycle.
+// 200 matches original pironman 5 breathing cycle.
 const breathingSteps = 200
 
 func BreathingFrame(frame int, r, g, b byte, brightnessPercent, numLEDs int) []hardware.Color {
