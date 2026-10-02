@@ -10,13 +10,15 @@ import (
 )
 
 const (
-	StyleSolid          = "solid"
-	StyleBreathing      = "breathing"
-	StyleFlow           = "flow"
-	StyleFlowReverse    = "flow_reverse"
-	StyleRainbow        = "rainbow"
-	StyleRainbowReverse = "rainbow_reverse"
-	StyleHueCycle       = "hue_cycle"
+	StyleSolid           = "solid"
+	StyleBreathing       = "breathing"
+	StyleFlow            = "flow"
+	StyleFlowReverse     = "flow_reverse"
+	StyleRainbow         = "rainbow"
+	StyleRainbowReverse  = "rainbow_reverse"
+	StyleHueCycle        = "hue_cycle"
+	StyleFlowFade        = "flow_fade"
+	StyleFlowFadeReverse = "flow_fade_reverse"
 )
 
 type frameFunc func(frame int, r, g, b byte, brightnessPercent, speedPercent, numLEDs int) ([]hardware.Color, time.Duration)
@@ -45,6 +47,12 @@ var styleDefs = []styleDef{
 	}},
 	{name: StyleHueCycle, frame: func(frame int, r, g, b byte, brightnessPercent, speedPercent, numLEDs int) ([]hardware.Color, time.Duration) {
 		return HueCycleFrame(frame, brightnessPercent, numLEDs), RainbowDelay(speedPercent)
+	}},
+	{name: StyleFlowFade, frame: func(frame int, r, g, b byte, brightnessPercent, speedPercent, numLEDs int) ([]hardware.Color, time.Duration) {
+		return FlowFadeFrame(frame, r, g, b, brightnessPercent, numLEDs, false), FlowFadeDelay(speedPercent)
+	}},
+	{name: StyleFlowFadeReverse, frame: func(frame int, r, g, b byte, brightnessPercent, speedPercent, numLEDs int) ([]hardware.Color, time.Duration) {
+		return FlowFadeFrame(frame, r, g, b, brightnessPercent, numLEDs, true), FlowFadeDelay(speedPercent)
 	}},
 }
 
@@ -147,6 +155,25 @@ const (
 
 func FlowDelay(speedPercent int) time.Duration {
 	return speedToDelay(speedPercent, flowDelayMax, flowDelayMin)
+}
+
+const flowFadeSteps = 10
+
+func FlowFadeFrame(frame int, r, g, b byte, brightnessPercent, numLEDs int, reverse bool) []hardware.Color {
+	hop := frame / flowFadeSteps
+	t := frame % flowFadeSteps
+
+	outgoing := mirrorIndex(hop%numLEDs, numLEDs, reverse)
+	incoming := mirrorIndex((hop+1)%numLEDs, numLEDs, reverse)
+
+	pixels := make([]hardware.Color, numLEDs)
+	pixels[outgoing] = scaleColor(r, g, b, brightnessPercent*(flowFadeSteps-t)/flowFadeSteps)
+	pixels[incoming] = scaleColor(r, g, b, brightnessPercent*t/flowFadeSteps)
+	return pixels
+}
+
+func FlowFadeDelay(speedPercent int) time.Duration {
+	return FlowDelay(speedPercent) / flowFadeSteps
 }
 
 func HSLToRGB(h float64, s, l int) (r, g, b byte) {

@@ -72,7 +72,8 @@ rgb:
   color: "#00ff00"
   brightness: 80
   style: solid    # solid | breathing | flow | flow_reverse | rainbow |
-                  # rainbow_reverse | hue_cycle (Phase 5, shipped)
+                  # rainbow_reverse | hue_cycle (Phase 5, shipped) |
+                  # flow_fade | flow_fade_reverse (PER-45, shipped)
   speed: 50       # 0-100; meaningless for the non-animated solid style
 
 oled:

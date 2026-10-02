@@ -10,7 +10,7 @@ import (
 )
 
 func TestValidateStyleAcceptsKnownStyles(t *testing.T) {
-	for _, name := range []string{"solid", "breathing", "flow", "flow_reverse", "rainbow", "rainbow_reverse", "hue_cycle"} {
+	for _, name := range []string{"solid", "breathing", "flow", "flow_reverse", "rainbow", "rainbow_reverse", "hue_cycle", "flow_fade", "flow_fade_reverse"} {
 		if err := rgb.ValidateStyle(name); err != nil {
 			t.Fatalf("ValidateStyle(%q): unexpected error: %v", name, err)
 		}
@@ -191,6 +191,98 @@ func TestFlowDelayIsMonotonicallyDecreasing(t *testing.T) {
 		got := rgb.FlowDelay(speed)
 		if got > prev {
 			t.Fatalf("FlowDelay(%d) = %v, expected <= previous %v", speed, got, prev)
+		}
+		prev = got
+	}
+}
+
+func TestFlowFadeFrameAtHopStartMatchesHardCut(t *testing.T) {
+	pixels := rgb.FlowFadeFrame(0, 0xff, 0, 0, 100, 4, false)
+	if len(pixels) != 4 {
+		t.Fatalf("expected 4 pixels, got %d", len(pixels))
+	}
+	want := []hardware.Color{{R: 255}, {}, {}, {}}
+	for i := range want {
+		if pixels[i] != want[i] {
+			t.Fatalf("pixel %d = %+v, want %+v", i, pixels[i], want[i])
+		}
+	}
+}
+
+func TestFlowFadeFrameAtHopMidpointSplitsEvenly(t *testing.T) {
+	pixels := rgb.FlowFadeFrame(5, 0xff, 0, 0, 100, 4, false)
+	want := []hardware.Color{{R: 127}, {R: 127}, {}, {}}
+	for i := range want {
+		if pixels[i] != want[i] {
+			t.Fatalf("pixel %d = %+v, want %+v", i, pixels[i], want[i])
+		}
+	}
+}
+
+func TestFlowFadeFrameNearHopEndMostlyIncoming(t *testing.T) {
+	pixels := rgb.FlowFadeFrame(9, 0xff, 0, 0, 100, 4, false)
+	want := []hardware.Color{{R: 25}, {R: 229}, {}, {}}
+	for i := range want {
+		if pixels[i] != want[i] {
+			t.Fatalf("pixel %d = %+v, want %+v", i, pixels[i], want[i])
+		}
+	}
+}
+
+func TestFlowFadeFrameWrapsAtStripLength(t *testing.T) {
+	atFrame0 := rgb.FlowFadeFrame(0, 0xff, 0, 0, 100, 4, false)
+	wrapped := rgb.FlowFadeFrame(40, 0xff, 0, 0, 100, 4, false)
+	for i := range atFrame0 {
+		if atFrame0[i] != wrapped[i] {
+			t.Fatalf("pixel %d: expected the full-strip cycle to repeat: frame 0 = %+v, frame 40 = %+v", i, atFrame0[i], wrapped[i])
+		}
+	}
+}
+
+func TestFlowFadeFrameReverseAtHopStartMatchesHardCut(t *testing.T) {
+	pixels := rgb.FlowFadeFrame(0, 0xff, 0, 0, 100, 4, true)
+	want := []hardware.Color{{}, {}, {}, {R: 255}}
+	for i := range want {
+		if pixels[i] != want[i] {
+			t.Fatalf("pixel %d = %+v, want %+v", i, pixels[i], want[i])
+		}
+	}
+}
+
+func TestFlowFadeReverseFrameAssignsPatternInReverseIndexOrder(t *testing.T) {
+	forward := rgb.FlowFadeFrame(5, 0xff, 0, 0, 100, 4, false)
+	reverse := rgb.FlowFadeFrame(5, 0xff, 0, 0, 100, 4, true)
+	for i := range forward {
+		if reverse[i] != forward[len(forward)-1-i] {
+			t.Fatalf("reverse pixel %d = %+v, want forward pixel %d = %+v", i, reverse[i], len(forward)-1-i, forward[len(forward)-1-i])
+		}
+	}
+}
+
+func TestFlowFadeFrameScalesByBrightness(t *testing.T) {
+	full := rgb.FlowFadeFrame(5, 0xff, 0, 0, 100, 4, false)
+	half := rgb.FlowFadeFrame(5, 0xff, 0, 0, 50, 4, false)
+	if half[0].R >= full[0].R {
+		t.Fatalf("expected halving brightness to dim the frame: full=%d half=%d", full[0].R, half[0].R)
+	}
+}
+
+func TestFlowFadeDelayMatchesFlowDelayDividedByStepCount(t *testing.T) {
+	for _, speed := range []int{0, 50, 100} {
+		got := rgb.FlowFadeDelay(speed)
+		want := rgb.FlowDelay(speed) / 10
+		if got != want {
+			t.Fatalf("FlowFadeDelay(%d) = %v, want %v (FlowDelay/10)", speed, got, want)
+		}
+	}
+}
+
+func TestFlowFadeDelayIsMonotonicallyDecreasing(t *testing.T) {
+	prev := rgb.FlowFadeDelay(0)
+	for speed := 10; speed <= 100; speed += 10 {
+		got := rgb.FlowFadeDelay(speed)
+		if got > prev {
+			t.Fatalf("FlowFadeDelay(%d) = %v, expected <= previous %v", speed, got, prev)
 		}
 		prev = got
 	}
