@@ -25,7 +25,7 @@ The Raspberry Pi 5's own official active-cooler fan, governed by the Pi's own ke
 _Avoid_: cooling fan, the fan
 
 **Case fan**:
-The Pironman case's own fan, wired to a GPIO relay. This tool actively controls it (on/off in v1, temperature-gated modes in v2) — the Pi's own thermal governor has no say over it. The base edition has two of these, controlled together as one unit, not independently.
+The Pironman case's own fan, wired to a GPIO relay. This tool actively controls it (a manual on/off override in v1; v2 replaced that with five selectable curves — `always_on` plus four temperature-gated ones — and no manual override) — the Pi's own thermal governor has no say over it. The base edition has two of these, controlled together as one unit, not independently.
 _Avoid_: GPIO fan, the fan
 
 **RGB strip**:

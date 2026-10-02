@@ -11,8 +11,6 @@ import (
 
 func FanHandlers(machine *fan.Machine, cfg *config.Config, cfgPath string, cfgMu *sync.Mutex) map[string]ipc.Handler {
 	return map[string]ipc.Handler{
-		"fan.on":   fanSetHandler(machine, cfg, cfgPath, cfgMu, fan.ModeOn),
-		"fan.off":  fanSetHandler(machine, cfg, cfgPath, cfgMu, fan.ModeOff),
 		"fan.mode": fanModeHandler(machine, cfg, cfgPath, cfgMu),
 	}
 }
@@ -25,31 +23,6 @@ func persistFan(cfg *config.Config, cfgPath string, mode string) error {
 	}
 	*cfg = updated
 	return nil
-}
-
-func fanSetHandler(machine *fan.Machine, cfg *config.Config, cfgPath string, opMu *sync.Mutex, mode string) ipc.Handler {
-	return func(args map[string]any) (any, error) {
-		opMu.Lock()
-		defer opMu.Unlock()
-
-		if err := persistFan(cfg, cfgPath, mode); err != nil {
-			return nil, fmt.Errorf("persist fan state: %w", err)
-		}
-
-		var err error
-		switch mode {
-		case fan.ModeOn:
-			err = machine.On()
-		case fan.ModeOff:
-			err = machine.Off()
-		}
-		if err != nil {
-			return nil, fmt.Errorf("apply fan state: %w", err)
-		}
-
-		state := machine.State()
-		return map[string]any{"mode": state.Mode, "relay_on": state.RelayOn}, nil
-	}
 }
 
 func fanModeHandler(machine *fan.Machine, cfg *config.Config, cfgPath string, opMu *sync.Mutex) ipc.Handler {

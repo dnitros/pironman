@@ -79,10 +79,6 @@ func Load(path string) (Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return Config{}, fmt.Errorf("parse config %s: %w", path, err)
 	}
-	// "auto" is a legacy fan mode no longer selectable; treat it as balanced.
-	if cfg.Fan.CaseFanState == "auto" {
-		cfg.Fan.CaseFanState = "balanced"
-	}
 	return cfg, nil
 }
 

@@ -86,7 +86,7 @@ func TestStatusHandlerPropagatesPWMFanReadError(t *testing.T) {
 		t.Fatalf("NewStore: %v", err)
 	}
 	oledMachine, _ := newTestMachine(t, true)
-	fanMachine, _ := newTestFanMachine(t, fan.ModeOff)
+	fanMachine, _ := newTestFanMachine(t, fan.ModeQuiet)
 	pwmReader := &fakePWMFanReader{err: errors.New("sysfs read failed")}
 
 	path := startTestDaemon(t, map[string]ipc.Handler{"status": StatusHandler(store, oledMachine, fanMachine, pwmReader)})

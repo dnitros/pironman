@@ -37,106 +37,14 @@ func (f *fakeStats) Snapshot() (sysstats.Snapshot, error) {
 	return sysstats.Snapshot{CPUTempC: f.tempC}, f.err
 }
 
-func TestNewMachineOnModeEnergizesRelay(t *testing.T) {
-	relay := &fakeRelay{}
-	if _, err := fan.NewMachine(relay, &fakeStats{}, fan.ModeOn); err != nil {
-		t.Fatalf("NewMachine: %v", err)
-	}
-	if relay.onCalls != 1 || relay.offCalls != 0 {
-		t.Fatalf("expected exactly one On, got on=%d off=%d", relay.onCalls, relay.offCalls)
-	}
-}
-
-func TestNewMachineOffModeDeenergizesRelay(t *testing.T) {
-	relay := &fakeRelay{}
-	if _, err := fan.NewMachine(relay, &fakeStats{}, fan.ModeOff); err != nil {
-		t.Fatalf("NewMachine: %v", err)
-	}
-	if relay.offCalls != 1 || relay.onCalls != 0 {
-		t.Fatalf("expected exactly one Off, got on=%d off=%d", relay.onCalls, relay.offCalls)
-	}
-}
-
 func TestNewMachineRejectsUnknownMode(t *testing.T) {
 	if _, err := fan.NewMachine(&fakeRelay{}, &fakeStats{}, "bogus"); err == nil {
 		t.Fatalf("expected an error for an unknown mode")
 	}
 }
 
-func TestNewMachineRejectsLegacyAutoMode(t *testing.T) {
-	if _, err := fan.NewMachine(&fakeRelay{}, &fakeStats{}, "auto"); err == nil {
-		t.Fatalf("expected an error for the removed legacy auto mode")
-	}
-}
-
-func TestNewMachinePropagatesApplyError(t *testing.T) {
-	relay := &fakeRelay{setErr: errBoom}
-	if _, err := fan.NewMachine(relay, &fakeStats{}, fan.ModeOn); err == nil {
-		t.Fatalf("expected an error when the initial apply fails")
-	}
-}
-
-func TestOnForcesRelayRegardlessOfTemperature(t *testing.T) {
-	relay := &fakeRelay{}
-	m, err := fan.NewMachine(relay, &fakeStats{tempC: 10}, fan.ModeOff)
-	if err != nil {
-		t.Fatalf("NewMachine: %v", err)
-	}
-
-	if err := m.On(); err != nil {
-		t.Fatalf("On: %v", err)
-	}
-	state := m.State()
-	if state.Mode != fan.ModeOn || !state.RelayOn {
-		t.Fatalf("State() = %+v, want mode=on relay=on", state)
-	}
-}
-
-func TestOffForcesRelayRegardlessOfTemperature(t *testing.T) {
-	relay := &fakeRelay{}
-	m, err := fan.NewMachine(relay, &fakeStats{tempC: 90}, fan.ModeOn)
-	if err != nil {
-		t.Fatalf("NewMachine: %v", err)
-	}
-
-	if err := m.Off(); err != nil {
-		t.Fatalf("Off: %v", err)
-	}
-	state := m.State()
-	if state.Mode != fan.ModeOff || state.RelayOn {
-		t.Fatalf("State() = %+v, want mode=off relay=off", state)
-	}
-}
-
-func TestModeRejectsUnknownName(t *testing.T) {
-	m, err := fan.NewMachine(&fakeRelay{}, &fakeStats{}, fan.ModeOff)
-	if err != nil {
-		t.Fatalf("NewMachine: %v", err)
-	}
-	if err := m.Mode("bogus"); err == nil {
-		t.Fatalf("expected an error for an unknown mode name")
-	}
-}
-
-func TestModeRejectsOnAndOff(t *testing.T) {
-	m, err := fan.NewMachine(&fakeRelay{}, &fakeStats{}, fan.ModeOff)
-	if err != nil {
-		t.Fatalf("NewMachine: %v", err)
-	}
-	if err := m.Mode(fan.ModeOn); err == nil {
-		t.Fatalf("expected Mode to reject %q; use On() instead", fan.ModeOn)
-	}
-	if err := m.Mode(fan.ModeOff); err == nil {
-		t.Fatalf("expected Mode to reject %q; use Off() instead", fan.ModeOff)
-	}
-}
-
-func TestModeErrorListsTheFiveCurveNames(t *testing.T) {
-	m, err := fan.NewMachine(&fakeRelay{}, &fakeStats{}, fan.ModeOff)
-	if err != nil {
-		t.Fatalf("NewMachine: %v", err)
-	}
-	err = m.Mode("bogus")
+func TestNewMachineErrorListsTheFiveCurveNames(t *testing.T) {
+	_, err := fan.NewMachine(&fakeRelay{}, &fakeStats{}, "bogus")
 	if err == nil {
 		t.Fatalf("expected an error")
 	}
@@ -156,16 +64,29 @@ func containsSubstring(s, substr string) bool {
 	return false
 }
 
-func TestAlwaysOnKeepsRelayOnRegardlessOfTemperatureAndSkipsStatsRead(t *testing.T) {
-	relay := &fakeRelay{}
-	stats := &fakeStats{tempC: -40}
-	m, err := fan.NewMachine(relay, stats, fan.ModeOff)
+func TestNewMachinePropagatesApplyError(t *testing.T) {
+	relay := &fakeRelay{setErr: errBoom}
+	if _, err := fan.NewMachine(relay, &fakeStats{}, fan.ModeAlwaysOn); err == nil {
+		t.Fatalf("expected an error when the initial apply fails")
+	}
+}
+
+func TestModeRejectsUnknownName(t *testing.T) {
+	m, err := fan.NewMachine(&fakeRelay{}, &fakeStats{tempC: 10}, fan.ModeQuiet)
 	if err != nil {
 		t.Fatalf("NewMachine: %v", err)
 	}
+	if err := m.Mode("bogus"); err == nil {
+		t.Fatalf("expected an error for an unknown mode name")
+	}
+}
 
-	if err := m.Mode(fan.ModeAlwaysOn); err != nil {
-		t.Fatalf("Mode: %v", err)
+func TestAlwaysOnKeepsRelayOnRegardlessOfTemperatureAndSkipsStatsRead(t *testing.T) {
+	relay := &fakeRelay{}
+	stats := &fakeStats{tempC: -40}
+	m, err := fan.NewMachine(relay, stats, fan.ModeAlwaysOn)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
 	}
 	if !m.State().RelayOn {
 		t.Fatalf("expected always_on to energize the relay regardless of temperature")
@@ -183,8 +104,7 @@ func TestAlwaysOnKeepsRelayOnRegardlessOfTemperatureAndSkipsStatsRead(t *testing
 }
 
 func TestPerformanceCurveThresholds(t *testing.T) {
-	relay := &fakeRelay{}
-	m, err := fan.NewMachine(relay, &fakeStats{tempC: 50.1}, fan.ModePerformance)
+	m, err := fan.NewMachine(&fakeRelay{}, &fakeStats{tempC: 50.1}, fan.ModePerformance)
 	if err != nil {
 		t.Fatalf("NewMachine: %v", err)
 	}
@@ -192,13 +112,9 @@ func TestPerformanceCurveThresholds(t *testing.T) {
 		t.Fatalf("expected performance to turn on above 50°C")
 	}
 
-	stats2 := &fakeStats{tempC: 44.9}
-	m2, err := fan.NewMachine(relay, stats2, fan.ModePerformance)
+	m2, err := fan.NewMachine(&fakeRelay{}, &fakeStats{tempC: 44.9}, fan.ModePerformance)
 	if err != nil {
 		t.Fatalf("NewMachine: %v", err)
-	}
-	if err := m2.Mode(fan.ModePerformance); err != nil {
-		t.Fatalf("Mode: %v", err)
 	}
 	if m2.State().RelayOn {
 		t.Fatalf("expected performance to turn off below 45°C")
@@ -206,8 +122,7 @@ func TestPerformanceCurveThresholds(t *testing.T) {
 }
 
 func TestCoolCurveThresholds(t *testing.T) {
-	relay := &fakeRelay{}
-	m, err := fan.NewMachine(relay, &fakeStats{tempC: 60.1}, fan.ModeCool)
+	m, err := fan.NewMachine(&fakeRelay{}, &fakeStats{tempC: 60.1}, fan.ModeCool)
 	if err != nil {
 		t.Fatalf("NewMachine: %v", err)
 	}
@@ -215,7 +130,7 @@ func TestCoolCurveThresholds(t *testing.T) {
 		t.Fatalf("expected cool to turn on above 60°C")
 	}
 
-	m2, err := fan.NewMachine(relay, &fakeStats{tempC: 54.9}, fan.ModeCool)
+	m2, err := fan.NewMachine(&fakeRelay{}, &fakeStats{tempC: 54.9}, fan.ModeCool)
 	if err != nil {
 		t.Fatalf("NewMachine: %v", err)
 	}
@@ -225,8 +140,7 @@ func TestCoolCurveThresholds(t *testing.T) {
 }
 
 func TestBalancedCurveThresholds(t *testing.T) {
-	relay := &fakeRelay{}
-	m, err := fan.NewMachine(relay, &fakeStats{tempC: 67.6}, fan.ModeBalanced)
+	m, err := fan.NewMachine(&fakeRelay{}, &fakeStats{tempC: 67.6}, fan.ModeBalanced)
 	if err != nil {
 		t.Fatalf("NewMachine: %v", err)
 	}
@@ -234,7 +148,7 @@ func TestBalancedCurveThresholds(t *testing.T) {
 		t.Fatalf("expected balanced to turn on above 67.5°C")
 	}
 
-	m2, err := fan.NewMachine(relay, &fakeStats{tempC: 62.4}, fan.ModeBalanced)
+	m2, err := fan.NewMachine(&fakeRelay{}, &fakeStats{tempC: 62.4}, fan.ModeBalanced)
 	if err != nil {
 		t.Fatalf("NewMachine: %v", err)
 	}
@@ -244,8 +158,7 @@ func TestBalancedCurveThresholds(t *testing.T) {
 }
 
 func TestQuietCurveThresholds(t *testing.T) {
-	relay := &fakeRelay{}
-	m, err := fan.NewMachine(relay, &fakeStats{tempC: 75.1}, fan.ModeQuiet)
+	m, err := fan.NewMachine(&fakeRelay{}, &fakeStats{tempC: 75.1}, fan.ModeQuiet)
 	if err != nil {
 		t.Fatalf("NewMachine: %v", err)
 	}
@@ -253,7 +166,7 @@ func TestQuietCurveThresholds(t *testing.T) {
 		t.Fatalf("expected quiet to turn on above 75°C")
 	}
 
-	m2, err := fan.NewMachine(relay, &fakeStats{tempC: 69.9}, fan.ModeQuiet)
+	m2, err := fan.NewMachine(&fakeRelay{}, &fakeStats{tempC: 69.9}, fan.ModeQuiet)
 	if err != nil {
 		t.Fatalf("NewMachine: %v", err)
 	}
@@ -265,7 +178,7 @@ func TestQuietCurveThresholds(t *testing.T) {
 func TestCurveNoOpsWithinHysteresisBand(t *testing.T) {
 	relay := &fakeRelay{}
 	stats := &fakeStats{tempC: 65}
-	m, err := fan.NewMachine(relay, stats, fan.ModeOn)
+	m, err := fan.NewMachine(relay, stats, fan.ModeAlwaysOn)
 	if err != nil {
 		t.Fatalf("NewMachine: %v", err)
 	}
@@ -285,7 +198,7 @@ func TestCurveNoOpsWithinHysteresisBand(t *testing.T) {
 func TestModePropagatesStatsError(t *testing.T) {
 	relay := &fakeRelay{}
 	stats := &fakeStats{tempC: 10}
-	m, err := fan.NewMachine(relay, stats, fan.ModeOff)
+	m, err := fan.NewMachine(relay, stats, fan.ModeQuiet)
 	if err != nil {
 		t.Fatalf("NewMachine: %v", err)
 	}
@@ -303,41 +216,7 @@ func TestNewMachinePropagatesInitialStatsErrorInCurveMode(t *testing.T) {
 	}
 }
 
-func TestTickIsANoOpInOnMode(t *testing.T) {
-	relay := &fakeRelay{}
-	stats := &fakeStats{tempC: 90}
-	m, err := fan.NewMachine(relay, stats, fan.ModeOn)
-	if err != nil {
-		t.Fatalf("NewMachine: %v", err)
-	}
-	callsBefore := stats.calls
-
-	if err := m.Tick(); err != nil {
-		t.Fatalf("Tick: %v", err)
-	}
-	if stats.calls != callsBefore {
-		t.Fatalf("expected Tick to not read temperature outside curve modes, got %d new reads", stats.calls-callsBefore)
-	}
-}
-
-func TestTickIsANoOpInOffMode(t *testing.T) {
-	relay := &fakeRelay{}
-	stats := &fakeStats{tempC: 10}
-	m, err := fan.NewMachine(relay, stats, fan.ModeOff)
-	if err != nil {
-		t.Fatalf("NewMachine: %v", err)
-	}
-	callsBefore := stats.calls
-
-	if err := m.Tick(); err != nil {
-		t.Fatalf("Tick: %v", err)
-	}
-	if stats.calls != callsBefore {
-		t.Fatalf("expected Tick to not read temperature outside curve modes, got %d new reads", stats.calls-callsBefore)
-	}
-}
-
-func TestTickReevaluatesInCurveModeAsTemperatureChanges(t *testing.T) {
+func TestTickReevaluatesAsTemperatureChanges(t *testing.T) {
 	relay := &fakeRelay{}
 	stats := &fakeStats{tempC: 10}
 	m, err := fan.NewMachine(relay, stats, fan.ModeBalanced)
@@ -388,5 +267,27 @@ func TestModePersistsAcrossSimulatedRestart(t *testing.T) {
 	}
 	if !restarted.State().RelayOn {
 		t.Fatalf("expected the restarted machine to re-evaluate temperature and energize the relay")
+	}
+}
+
+func TestOffDeenergizesRelayWithoutChangingMode(t *testing.T) {
+	relay := &fakeRelay{}
+	m, err := fan.NewMachine(relay, &fakeStats{tempC: 90}, fan.ModeBalanced)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+	if !m.State().RelayOn {
+		t.Fatalf("expected the relay to start on at 90°C")
+	}
+
+	if err := m.Off(); err != nil {
+		t.Fatalf("Off: %v", err)
+	}
+	state := m.State()
+	if state.RelayOn {
+		t.Fatalf("expected Off to de-energize the relay")
+	}
+	if state.Mode != fan.ModeBalanced {
+		t.Fatalf("expected Off to leave the selected mode unchanged, got %q", state.Mode)
 	}
 }

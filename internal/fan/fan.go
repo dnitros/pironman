@@ -10,8 +10,6 @@ import (
 )
 
 const (
-	ModeOn          = "on"
-	ModeOff         = "off"
 	ModeAlwaysOn    = "always_on"
 	ModePerformance = "performance"
 	ModeCool        = "cool"
@@ -45,8 +43,7 @@ var curveThresholds = map[string]threshold{
 
 var curveNames = []string{ModeAlwaysOn, ModePerformance, ModeCool, ModeBalanced, ModeQuiet}
 
-// ValidateMode reports whether name is one of the five named curves accepted
-// by Mode (on/off go through On/Off instead, so they're not valid here).
+// ValidateMode reports whether name is one of the five named curves.
 func ValidateMode(name string) error {
 	for _, n := range curveNames {
 		if name == n {
@@ -72,8 +69,8 @@ type Machine struct {
 }
 
 func NewMachine(relay hardware.Relay, stats sysstats.Source, initialMode string) (*Machine, error) {
-	if !validMode(initialMode) {
-		return nil, fmt.Errorf("fan: invalid mode %q", initialMode)
+	if err := ValidateMode(initialMode); err != nil {
+		return nil, err
 	}
 
 	m := &Machine{
@@ -81,7 +78,7 @@ func NewMachine(relay hardware.Relay, stats sysstats.Source, initialMode string)
 		stats: stats,
 		mode:  initialMode,
 	}
-	if err := m.applyLocked(); err != nil {
+	if err := m.evaluateLocked(); err != nil {
 		return nil, fmt.Errorf("apply initial fan state: %w", err)
 	}
 	return m, nil
@@ -102,25 +99,8 @@ func (m *Machine) State() State {
 	return State{Mode: m.mode, RelayOn: m.relayOn}
 }
 
-func (m *Machine) On() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	m.mode = ModeOn
-	return m.setRelayLocked(true)
-}
-
-func (m *Machine) Off() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	m.mode = ModeOff
-	return m.setRelayLocked(false)
-}
-
 // Mode selects one of the five named curves and evaluates it immediately
-// (always_on skips temperature entirely). on/off are not valid here; use
-// On/Off instead.
+// (always_on skips temperature entirely).
 func (m *Machine) Mode(name string) error {
 	if err := ValidateMode(name); err != nil {
 		return err
@@ -136,22 +116,17 @@ func (m *Machine) Mode(name string) error {
 func (m *Machine) Tick() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
-	if ValidateMode(m.mode) != nil {
-		return nil
-	}
 	return m.evaluateLocked()
 }
 
-func (m *Machine) applyLocked() error {
-	switch m.mode {
-	case ModeOn:
-		return m.setRelayLocked(true)
-	case ModeOff:
-		return m.setRelayLocked(false)
-	default:
-		return m.evaluateLocked()
-	}
+// Off de-energizes the relay without changing the selected mode, so a
+// restart resumes the same curve. It's reached only from the daemon's
+// shutdown hook — there's no user-facing manual override, matching the
+// original hardware.
+func (m *Machine) Off() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.setRelayLocked(false)
 }
 
 func (m *Machine) evaluateLocked() error {
@@ -188,13 +163,4 @@ func (m *Machine) setRelayLocked(on bool) error {
 	}
 	m.relayOn = on
 	return nil
-}
-
-func validMode(mode string) bool {
-	switch mode {
-	case ModeOn, ModeOff:
-		return true
-	default:
-		return ValidateMode(mode) == nil
-	}
 }
