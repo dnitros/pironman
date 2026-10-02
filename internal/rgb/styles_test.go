@@ -10,7 +10,7 @@ import (
 )
 
 func TestValidateStyleAcceptsKnownStyles(t *testing.T) {
-	for _, name := range []string{"solid", "breathing", "flow", "flow_reverse", "rainbow", "rainbow_reverse"} {
+	for _, name := range []string{"solid", "breathing", "flow", "flow_reverse", "rainbow", "rainbow_reverse", "hue_cycle"} {
 		if err := rgb.ValidateStyle(name); err != nil {
 			t.Fatalf("ValidateStyle(%q): unexpected error: %v", name, err)
 		}
@@ -18,7 +18,7 @@ func TestValidateStyleAcceptsKnownStyles(t *testing.T) {
 }
 
 func TestValidateStyleRejectsUnknownName(t *testing.T) {
-	err := rgb.ValidateStyle("hue_cycle")
+	err := rgb.ValidateStyle("disco")
 	if err == nil {
 		t.Fatalf("expected an error for an unimplemented style name")
 	}
@@ -329,5 +329,46 @@ func TestRainbowDelayIsMonotonicallyDecreasing(t *testing.T) {
 			t.Fatalf("RainbowDelay(%d) = %v, expected <= previous %v", speed, got, prev)
 		}
 		prev = got
+	}
+}
+
+func TestHueCycleFrameUsesSameHueForAllLEDs(t *testing.T) {
+	pixels := rgb.HueCycleFrame(0, 100, 4)
+	if len(pixels) != 4 {
+		t.Fatalf("expected 4 pixels, got %d", len(pixels))
+	}
+	want := hardware.Color{R: 255, G: 0, B: 0}
+	for i, p := range pixels {
+		if p != want {
+			t.Fatalf("pixel %d = %+v, want %+v (uniform hue across the strip)", i, p, want)
+		}
+	}
+}
+
+func TestHueCycleFrameAdvancesByOneDegreePerFrame(t *testing.T) {
+	pixels := rgb.HueCycleFrame(60, 100, 3)
+	want := hardware.Color{R: 255, G: 255, B: 0}
+	for i, p := range pixels {
+		if p != want {
+			t.Fatalf("pixel %d = %+v, want %+v (60 degrees in = yellow)", i, p, want)
+		}
+	}
+}
+
+func TestHueCycleFrameWrapsAtCycleLength(t *testing.T) {
+	atFrame0 := rgb.HueCycleFrame(0, 100, 3)
+	atFrame360 := rgb.HueCycleFrame(360, 100, 3)
+	for i := range atFrame0 {
+		if atFrame0[i] != atFrame360[i] {
+			t.Fatalf("pixel %d: expected the 360-degree cycle to repeat: frame 0 = %+v, frame 360 = %+v", i, atFrame0[i], atFrame360[i])
+		}
+	}
+}
+
+func TestHueCycleFrameScalesByBrightness(t *testing.T) {
+	full := rgb.HueCycleFrame(0, 100, 3)
+	half := rgb.HueCycleFrame(0, 50, 3)
+	if half[0].R >= full[0].R {
+		t.Fatalf("expected halving brightness to dim the frame: full=%d half=%d", full[0].R, half[0].R)
 	}
 }

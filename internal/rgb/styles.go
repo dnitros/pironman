@@ -16,6 +16,7 @@ const (
 	StyleFlowReverse    = "flow_reverse"
 	StyleRainbow        = "rainbow"
 	StyleRainbowReverse = "rainbow_reverse"
+	StyleHueCycle       = "hue_cycle"
 )
 
 type frameFunc func(frame int, r, g, b byte, brightnessPercent, speedPercent, numLEDs int) ([]hardware.Color, time.Duration)
@@ -41,6 +42,9 @@ var styleDefs = []styleDef{
 	}},
 	{name: StyleRainbowReverse, frame: func(frame int, r, g, b byte, brightnessPercent, speedPercent, numLEDs int) ([]hardware.Color, time.Duration) {
 		return RainbowFrame(frame, brightnessPercent, numLEDs, true), RainbowDelay(speedPercent)
+	}},
+	{name: StyleHueCycle, frame: func(frame int, r, g, b byte, brightnessPercent, speedPercent, numLEDs int) ([]hardware.Color, time.Duration) {
+		return HueCycleFrame(frame, brightnessPercent, numLEDs), RainbowDelay(speedPercent)
 	}},
 }
 
@@ -198,6 +202,18 @@ const (
 
 func RainbowDelay(speedPercent int) time.Duration {
 	return speedToDelay(speedPercent, rainbowDelayMax, rainbowDelayMin)
+}
+
+func HueCycleFrame(frame int, brightnessPercent, numLEDs int) []hardware.Color {
+	hue := float64(frame % rainbowCycleDegrees)
+	r, g, b := HSLToRGB(hue, 100, 50)
+	color := scaleColor(r, g, b, brightnessPercent)
+
+	pixels := make([]hardware.Color, numLEDs)
+	for i := range pixels {
+		pixels[i] = color
+	}
+	return pixels
 }
 
 func animationFrame(style string, frame int, r, g, b byte, brightnessPercent, speedPercent, numLEDs int) ([]hardware.Color, time.Duration, error) {

@@ -291,7 +291,7 @@ func TestSetStyleRejectsInvalidNameWithoutMutatingState(t *testing.T) {
 		t.Fatalf("NewStore: %v", err)
 	}
 
-	if _, err := store.SetStyle("hue_cycle", nil); err == nil {
+	if _, err := store.SetStyle("disco", nil); err == nil {
 		t.Fatalf("expected an error for an invalid style name")
 	}
 	if store.State().Style != StyleSolid {

@@ -572,7 +572,7 @@ func TestRGBHandlersStyleRejectsInvalidNameWithoutMutatingCfg(t *testing.T) {
 
 	path := startTestDaemon(t, RGBHandlers(store, &cfg, cfgPath, &sync.Mutex{}))
 
-	resp, err := ipc.Send(path, "rgb.style", map[string]any{"name": "hue_cycle"})
+	resp, err := ipc.Send(path, "rgb.style", map[string]any{"name": "disco"})
 	if err != nil {
 		t.Fatalf("Send: %v", err)
 	}
