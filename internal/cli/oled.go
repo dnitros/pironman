@@ -71,8 +71,8 @@ func newOLEDImageCmd() *cobra.Command {
 			return runOLEDImage(ipc.SocketPath(), args, interval, invert)
 		},
 	}
-	cmd.Flags().IntVar(&interval, "interval", 0, "seconds between images when rotating multiple paths (default: the configured value, 5s initially)")
-	cmd.Flags().BoolVar(&invert, "invert", false, "swap which pixels light up (e.g. a dark glyph on a light background becomes a light glyph on a dark background)")
+	cmd.Flags().IntVar(&interval, "interval", 0, "seconds between images when rotating multiple paths (default: oled.image_interval_seconds)")
+	cmd.Flags().BoolVar(&invert, "invert", false, "invert which pixels are lit")
 	return cmd
 }
 
