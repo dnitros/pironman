@@ -13,6 +13,7 @@ func TestGatherStatusReturnsCurrentState(t *testing.T) {
 		"status": func(args map[string]any) (any, error) {
 			return map[string]any{
 				"enabled": true, "color": "#00ff00", "brightness": 80,
+				"style": "breathing", "speed": 65,
 				"oled_awake": true, "oled_page": "mix",
 				"case_fan_mode": "auto", "case_fan_relay_on": false,
 				"pwm_fan_level": 2, "pwm_fan_speed_rpm": 1800,
@@ -25,7 +26,8 @@ func TestGatherStatusReturnsCurrentState(t *testing.T) {
 		t.Fatalf("gatherStatus: %v", err)
 	}
 	want := StatusInfo{
-		Enabled: true, Color: "#00ff00", Brightness: 80, OLEDAwake: true, OLEDPage: "mix",
+		Enabled: true, Color: "#00ff00", Brightness: 80, Style: "breathing", Speed: 65,
+		OLEDAwake: true, OLEDPage: "mix",
 		CaseFanMode: "auto", CaseFanRelayOn: false, PWMFanLevel: 2, PWMFanSpeedRPM: 1800,
 	}
 	if info != want {
