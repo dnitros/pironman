@@ -1,122 +1,56 @@
-package pbm_test
+// Ported byte-for-byte from github.com/l-you/pironman5-go's
+// internal/pbm/pbm_test.go (GPLv2), as part of the A/B conversion-code swap.
+// Note the white-box `package pbm` (not `pbm_test`) — that's their
+// convention, kept here for fidelity even though it differs from this
+// project's own black-box-by-default style.
+package pbm
 
 import (
 	"bytes"
 	"image"
 	"image/color"
-	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/dnitros/pironman/internal/pbm"
 )
 
-func checkerboard(w, h int) *image.Gray {
-	img := image.NewGray(image.Rect(0, 0, w, h))
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
-			if (x+y)%2 == 0 {
-				img.SetGray(x, y, color.Gray{Y: 255})
-			}
-		}
-	}
-	return img
-}
-
 func TestEncodeDecodeRoundTrip(t *testing.T) {
-	want := checkerboard(16, 10)
-
+	src := image.NewGray(image.Rect(0, 0, 8, 4))
+	for y := 0; y < 4; y++ {
+		for x := 0; x < 8; x++ {
+			if (x+y)%2 == 0 {
+				src.SetGray(x, y, color.Gray{Y: 255})
+			}
+		}
+	}
 	var buf bytes.Buffer
-	if err := pbm.Encode(&buf, want); err != nil {
-		t.Fatalf("Encode: %v", err)
+	if err := Encode(&buf, src); err != nil {
+		t.Fatal(err)
 	}
-
-	got, err := pbm.Decode(&buf)
+	got, err := Decode(bytes.NewReader(buf.Bytes()))
 	if err != nil {
-		t.Fatalf("Decode: %v", err)
+		t.Fatal(err)
 	}
-
-	if got.Bounds() != want.Bounds() {
-		t.Fatalf("Bounds() = %v, want %v", got.Bounds(), want.Bounds())
-	}
-	for y := 0; y < 10; y++ {
-		for x := 0; x < 16; x++ {
-			if got.GrayAt(x, y) != want.GrayAt(x, y) {
-				t.Fatalf("pixel (%d,%d) = %v, want %v", x, y, got.GrayAt(x, y), want.GrayAt(x, y))
-			}
-		}
+	if !bytes.Equal(got.Pix, src.Pix) {
+		t.Fatalf("decoded pixels = %v, want %v", got.Pix, src.Pix)
 	}
 }
 
-func TestEncodeFileDecodeFileRoundTrip(t *testing.T) {
-	want := checkerboard(9, 7)
-	path := filepath.Join(t.TempDir(), "out.pbm")
-
-	if err := pbm.EncodeFile(path, want); err != nil {
-		t.Fatalf("EncodeFile: %v", err)
-	}
-
-	got, err := pbm.DecodeFile(path)
+func TestDecodeP1WithComments(t *testing.T) {
+	data := strings.NewReader("P1\n# test\n4 2\n0 1 0 1\n1 0 1 0\n")
+	img, err := Decode(data)
 	if err != nil {
-		t.Fatalf("DecodeFile: %v", err)
+		t.Fatal(err)
 	}
-	if got.Bounds() != want.Bounds() {
-		t.Fatalf("Bounds() = %v, want %v", got.Bounds(), want.Bounds())
+	if img.Bounds().Dx() != 4 || img.Bounds().Dy() != 2 {
+		t.Fatalf("bounds = %v", img.Bounds())
 	}
-}
-
-func TestDecodeP1ASCII(t *testing.T) {
-	src := "P1\n# a comment\n3 2\n0 1 0\n1 0 1\n"
-	img, err := pbm.Decode(strings.NewReader(src))
-	if err != nil {
-		t.Fatalf("Decode: %v", err)
-	}
-	if b := img.Bounds(); b.Dx() != 3 || b.Dy() != 2 {
-		t.Fatalf("Bounds() = %v, want 3x2", b)
-	}
-	// bit 1 means black (Y=0) per the PBM spec, bit 0 means white (Y=255).
-	want := [][]uint8{{255, 0, 255}, {0, 255, 0}}
-	for y, row := range want {
-		for x, y8 := range row {
-			if got := img.GrayAt(x, y).Y; got != y8 {
-				t.Fatalf("pixel (%d,%d) = %d, want %d", x, y, got, y8)
-			}
-		}
+	if img.GrayAt(0, 0).Y != 255 || img.GrayAt(1, 0).Y != 0 {
+		t.Fatalf("unexpected first row pixels")
 	}
 }
 
 func TestDecodeRejectsUnsupportedMagic(t *testing.T) {
-	if _, err := pbm.Decode(strings.NewReader("P5\n1 1\n\x00")); err == nil {
-		t.Fatalf("expected an error for an unsupported PBM magic")
-	}
-}
-
-func TestDecodeFilePropagatesMissingFile(t *testing.T) {
-	if _, err := pbm.DecodeFile(filepath.Join(t.TempDir(), "missing.pbm")); err == nil {
-		t.Fatalf("expected an error for a missing file")
-	}
-}
-
-func TestEncodeP4HeaderAndPacking(t *testing.T) {
-	img := image.NewGray(image.Rect(0, 0, 3, 1))
-	img.SetGray(0, 0, color.Gray{Y: 255})
-	img.SetGray(1, 0, color.Gray{Y: 0})
-	img.SetGray(2, 0, color.Gray{Y: 255})
-
-	var buf bytes.Buffer
-	if err := pbm.Encode(&buf, img); err != nil {
-		t.Fatalf("Encode: %v", err)
-	}
-
-	const header = "P4\n3 1\n"
-	data := buf.Bytes()
-	if string(data[:len(header)]) != header {
-		t.Fatalf("header = %q, want %q", data[:len(header)], header)
-	}
-	// 1 row, 3 px wide -> 1 packed byte. bit1 (lit, Y=255) -> 0; bit0 (unlit, Y=0) -> 1.
-	// Pixels: lit, unlit, lit -> bits (MSB first): 0 1 0 -> 0x40.
-	rest := data[len(header):]
-	if len(rest) != 1 || rest[0] != 0x40 {
-		t.Fatalf("packed row = %#x, want [0x40]", rest)
+	if _, err := Decode(strings.NewReader("P2\n1 1\n0\n")); err == nil {
+		t.Fatal("expected unsupported magic error")
 	}
 }

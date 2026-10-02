@@ -97,7 +97,7 @@ func TestRunOLEDImageRoundTrip(t *testing.T) {
 		},
 	})
 
-	if err := runOLEDImage(path, []string{"a.png", "b.pbm"}, 10, false); err != nil {
+	if err := runOLEDImage(path, []string{"a.png", "b.pbm"}, 10); err != nil {
 		t.Fatalf("runOLEDImage: %v", err)
 	}
 
@@ -127,7 +127,7 @@ func TestRunOLEDImageResolvesRelativePathsToAbsolute(t *testing.T) {
 		},
 	})
 
-	if err := runOLEDImage(path, []string{"../relative/cat.png"}, 0, false); err != nil {
+	if err := runOLEDImage(path, []string{"../relative/cat.png"}, 0); err != nil {
 		t.Fatalf("runOLEDImage: %v", err)
 	}
 
@@ -150,7 +150,7 @@ func TestRunOLEDImageOmitsIntervalWhenNotSet(t *testing.T) {
 		},
 	})
 
-	if err := runOLEDImage(path, []string{"a.png"}, 0, false); err != nil {
+	if err := runOLEDImage(path, []string{"a.png"}, 0); err != nil {
 		t.Fatalf("runOLEDImage: %v", err)
 	}
 	if _, ok := gotArgs["interval"]; ok {
@@ -158,27 +158,10 @@ func TestRunOLEDImageOmitsIntervalWhenNotSet(t *testing.T) {
 	}
 }
 
-func TestRunOLEDImageSendsInvertFlag(t *testing.T) {
-	var gotArgs map[string]any
-	path := startTestDaemon(t, map[string]ipc.Handler{
-		"oled.image": func(args map[string]any) (any, error) {
-			gotArgs = args
-			return map[string]any{"awake": true, "page": "image", "paths": args["paths"]}, nil
-		},
-	})
-
-	if err := runOLEDImage(path, []string{"a.png"}, 0, true); err != nil {
-		t.Fatalf("runOLEDImage: %v", err)
-	}
-	if gotArgs["invert"] != true {
-		t.Fatalf("gotArgs[\"invert\"] = %v, want true", gotArgs["invert"])
-	}
-}
-
 func TestRunOLEDImageFailsClearlyWhenDaemonUnreachable(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "no-such-daemon.sock")
 
-	err := runOLEDImage(path, []string{"a.png"}, 0, false)
+	err := runOLEDImage(path, []string{"a.png"}, 0)
 	if err == nil {
 		t.Fatalf("expected an error when the daemon is unreachable")
 	}
@@ -194,7 +177,7 @@ func TestRunOLEDImagePropagatesHandlerError(t *testing.T) {
 		},
 	})
 
-	err := runOLEDImage(path, []string{"a.png"}, 0, false)
+	err := runOLEDImage(path, []string{"a.png"}, 0)
 	if err == nil {
 		t.Fatalf("expected an error when the handler fails")
 	}

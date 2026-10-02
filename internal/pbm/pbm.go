@@ -1,6 +1,9 @@
-// Package pbm decodes and encodes the PBM (Portable Bitmap) image format:
-// P1 (ASCII) and P4 (binary) on read, P4 on write. Per the format's
-// convention, a set bit is black (Y=0) and a clear bit is white (Y=255).
+// Package pbm decodes and encodes the PBM (Portable Bitmap) image format.
+//
+// Ported byte-for-byte from github.com/l-you/pironman5-go's
+// internal/pbm/pbm.go (GPLv2), for a direct A/B comparison against this
+// project's own conversion approach. No project-internal imports, so no
+// adaptation was needed beyond the package declaration.
 package pbm
 
 import (
@@ -13,160 +16,213 @@ import (
 	"strconv"
 )
 
-func Decode(r io.Reader) (*image.Gray, error) {
-	br := bufio.NewReader(r)
-
-	magic, err := readToken(br)
+func DecodeFile(path string) (*image.Gray, error) {
+	file, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("pbm: read magic: %w", err)
+		return nil, fmt.Errorf("open pbm: %w", err)
 	}
-	if magic != "P1" && magic != "P4" {
-		return nil, fmt.Errorf("pbm: unsupported magic %q", magic)
-	}
-
-	width, err := readIntToken(br)
+	defer file.Close()
+	img, err := Decode(file)
 	if err != nil {
-		return nil, fmt.Errorf("pbm: read width: %w", err)
-	}
-	height, err := readIntToken(br)
-	if err != nil {
-		return nil, fmt.Errorf("pbm: read height: %w", err)
-	}
-	if width <= 0 || height <= 0 {
-		return nil, fmt.Errorf("pbm: invalid dimensions %dx%d", width, height)
-	}
-
-	img := image.NewGray(image.Rect(0, 0, width, height))
-
-	if magic == "P1" {
-		for y := 0; y < height; y++ {
-			for x := 0; x < width; x++ {
-				bit, err := readIntToken(br)
-				if err != nil {
-					return nil, fmt.Errorf("pbm: read pixel (%d,%d): %w", x, y, err)
-				}
-				img.SetGray(x, y, bitToGray(bit))
-			}
-		}
-		return img, nil
-	}
-
-	rowBytes := (width + 7) / 8
-	row := make([]byte, rowBytes)
-	for y := 0; y < height; y++ {
-		if _, err := io.ReadFull(br, row); err != nil {
-			return nil, fmt.Errorf("pbm: read row %d: %w", y, err)
-		}
-		for x := 0; x < width; x++ {
-			bit := (row[x/8] >> (7 - uint(x%8))) & 1
-			img.SetGray(x, y, bitToGray(int(bit)))
-		}
+		return nil, fmt.Errorf("decode pbm: %w", err)
 	}
 	return img, nil
 }
 
-func DecodeFile(path string) (*image.Gray, error) {
-	f, err := os.Open(path)
+func Decode(r io.Reader) (*image.Gray, error) {
+	dec := decoder{r: bufio.NewReader(r)}
+	magic, err := dec.token()
 	if err != nil {
-		return nil, fmt.Errorf("pbm: open %s: %w", path, err)
+		return nil, err
 	}
-	defer f.Close()
-
-	img, err := Decode(f)
+	width, err := dec.intToken("width")
 	if err != nil {
-		return nil, fmt.Errorf("pbm: decode %s: %w", path, err)
+		return nil, err
+	}
+	height, err := dec.intToken("height")
+	if err != nil {
+		return nil, err
+	}
+	if width < 1 || height < 1 {
+		return nil, fmt.Errorf("invalid pbm size %dx%d", width, height)
+	}
+	img := image.NewGray(image.Rect(0, 0, width, height))
+	switch magic {
+	case "P1":
+		if err := decodeP1(&dec, img); err != nil {
+			return nil, err
+		}
+	case "P4":
+		if err := decodeP4(&dec, img); err != nil {
+			return nil, err
+		}
+	default:
+		return nil, fmt.Errorf("unsupported pbm magic %q", magic)
 	}
 	return img, nil
+}
+
+func EncodeFile(path string, img *image.Gray) error {
+	file, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("create pbm: %w", err)
+	}
+	defer file.Close()
+	if err := Encode(file, img); err != nil {
+		return fmt.Errorf("encode pbm: %w", err)
+	}
+	return nil
 }
 
 func Encode(w io.Writer, img *image.Gray) error {
-	b := img.Bounds()
-	width, height := b.Dx(), b.Dy()
-	if _, err := fmt.Fprintf(w, "P4\n%d %d\n", width, height); err != nil {
-		return fmt.Errorf("pbm: write header: %w", err)
+	bounds := img.Bounds()
+	if bounds.Dx() < 1 || bounds.Dy() < 1 {
+		return fmt.Errorf("invalid image bounds %v", bounds)
 	}
-
-	rowBytes := (width + 7) / 8
+	if _, err := fmt.Fprintf(w, "P4\n%d %d\n", bounds.Dx(), bounds.Dy()); err != nil {
+		return err
+	}
+	rowBytes := (bounds.Dx() + 7) / 8
 	row := make([]byte, rowBytes)
-	for y := 0; y < height; y++ {
-		for i := range row {
-			row[i] = 0
-		}
-		for x := 0; x < width; x++ {
-			if img.GrayAt(b.Min.X+x, b.Min.Y+y).Y < 128 {
-				row[x/8] |= 1 << (7 - uint(x%8))
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		clear(row)
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			if img.GrayAt(x, y).Y > 127 {
+				continue
 			}
+			offset := x - bounds.Min.X
+			row[offset/8] |= 1 << uint(7-offset%8)
 		}
 		if _, err := w.Write(row); err != nil {
-			return fmt.Errorf("pbm: write row %d: %w", y, err)
+			return err
 		}
 	}
 	return nil
 }
 
-func EncodeFile(path string, img *image.Gray) error {
-	f, err := os.Create(path)
-	if err != nil {
-		return fmt.Errorf("pbm: create %s: %w", path, err)
+func decodeP1(dec *decoder, img *image.Gray) error {
+	for y := 0; y < img.Bounds().Dy(); y++ {
+		for x := 0; x < img.Bounds().Dx(); x++ {
+			token, err := dec.token()
+			if err != nil {
+				return err
+			}
+			switch token {
+			case "0":
+				img.SetGray(x, y, color.Gray{Y: 255})
+			case "1":
+			default:
+				return fmt.Errorf("invalid P1 pixel %q", token)
+			}
+		}
 	}
-	defer f.Close()
+	return nil
+}
 
-	if err := Encode(f, img); err != nil {
+func decodeP4(dec *decoder, img *image.Gray) error {
+	if err := dec.skipIgnored(); err != nil {
 		return err
 	}
-	return f.Close()
-}
-
-func bitToGray(bit int) color.Gray {
-	if bit == 1 {
-		return color.Gray{Y: 0}
-	}
-	return color.Gray{Y: 255}
-}
-
-// readToken returns the next whitespace-delimited token, skipping leading
-// whitespace and "#"-prefixed comments per the PBM header grammar.
-func readToken(br *bufio.Reader) (string, error) {
-	for {
-		b, err := br.ReadByte()
-		if err != nil {
-			return "", err
+	rowBytes := (img.Bounds().Dx() + 7) / 8
+	row := make([]byte, rowBytes)
+	for y := 0; y < img.Bounds().Dy(); y++ {
+		if _, err := io.ReadFull(dec.r, row); err != nil {
+			return fmt.Errorf("read P4 row %d: %w", y, err)
 		}
-		if b == '#' {
-			if _, err := br.ReadString('\n'); err != nil {
-				return "", err
+		for x := 0; x < img.Bounds().Dx(); x++ {
+			if row[x/8]&(1<<uint(7-x%8)) != 0 {
+				continue
 			}
-			continue
-		}
-		if isPBMSpace(b) {
-			continue
-		}
-
-		buf := []byte{b}
-		for {
-			b, err := br.ReadByte()
-			if err != nil {
-				if err == io.EOF {
-					return string(buf), nil
-				}
-				return "", err
-			}
-			if isPBMSpace(b) {
-				return string(buf), nil
-			}
-			buf = append(buf, b)
+			img.SetGray(x, y, color.Gray{Y: 255})
 		}
 	}
+	return nil
 }
 
-func readIntToken(br *bufio.Reader) (int, error) {
-	tok, err := readToken(br)
+type decoder struct {
+	r *bufio.Reader
+}
+
+func (d *decoder) intToken(name string) (int, error) {
+	token, err := d.token()
 	if err != nil {
 		return 0, err
 	}
-	return strconv.Atoi(tok)
+	value, err := strconv.Atoi(token)
+	if err != nil {
+		return 0, fmt.Errorf("parse pbm %s %q: %w", name, token, err)
+	}
+	return value, nil
 }
 
-func isPBMSpace(b byte) bool {
-	return b == ' ' || b == '\t' || b == '\n' || b == '\r'
+func (d *decoder) token() (string, error) {
+	if err := d.skipIgnored(); err != nil {
+		return "", err
+	}
+	buf := make([]byte, 0, 8)
+	for {
+		b, err := d.r.ReadByte()
+		if err != nil {
+			if err == io.EOF && len(buf) > 0 {
+				return string(buf), nil
+			}
+			return "", err
+		}
+		if isSpace(b) {
+			return string(buf), nil
+		}
+		if b == '#' {
+			if err := d.skipComment(); err != nil {
+				return "", err
+			}
+			return string(buf), nil
+		}
+		buf = append(buf, b)
+	}
+}
+
+func (d *decoder) skipIgnored() error {
+	for {
+		b, err := d.r.ReadByte()
+		if err != nil {
+			return err
+		}
+		switch {
+		case isSpace(b):
+			continue
+		case b == '#':
+			if err := d.skipComment(); err != nil {
+				return err
+			}
+		default:
+			if err := d.r.UnreadByte(); err != nil {
+				return err
+			}
+			return nil
+		}
+	}
+}
+
+func (d *decoder) skipComment() error {
+	for {
+		b, err := d.r.ReadByte()
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+		if b == '\n' || b == '\r' {
+			return nil
+		}
+	}
+}
+
+func isSpace(b byte) bool {
+	switch b {
+	case ' ', '\t', '\n', '\r', '\f', '\v':
+		return true
+	default:
+		return false
+	}
 }
