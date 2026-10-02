@@ -74,7 +74,6 @@ func TestDecodeP1ASCII(t *testing.T) {
 	if b := img.Bounds(); b.Dx() != 3 || b.Dy() != 2 {
 		t.Fatalf("Bounds() = %v, want 3x2", b)
 	}
-	// bit 1 means black (Y=0) per the PBM spec, bit 0 means white (Y=255).
 	want := [][]uint8{{255, 0, 255}, {0, 255, 0}}
 	for y, row := range want {
 		for x, y8 := range row {
@@ -113,8 +112,6 @@ func TestEncodeP4HeaderAndPacking(t *testing.T) {
 	if string(data[:len(header)]) != header {
 		t.Fatalf("header = %q, want %q", data[:len(header)], header)
 	}
-	// 1 row, 3 px wide -> 1 packed byte. bit1 (lit, Y=255) -> 0; bit0 (unlit, Y=0) -> 1.
-	// Pixels: lit, unlit, lit -> bits (MSB first): 0 1 0 -> 0x40.
 	rest := data[len(header):]
 	if len(rest) != 1 || rest[0] != 0x40 {
 		t.Fatalf("packed row = %#x, want [0x40]", rest)

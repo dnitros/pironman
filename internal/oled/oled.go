@@ -180,10 +180,6 @@ func (m *Machine) Previous() error {
 	return m.renderLocked()
 }
 
-// SetImages replaces the configured image-page paths and rotation interval.
-// A single path is shown indefinitely; multiple paths rotate once Tick
-// observes interval has elapsed. It re-renders immediately if the image page
-// is currently active.
 func (m *Machine) SetImages(paths []string, interval time.Duration) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -291,8 +287,6 @@ func (m *Machine) currentImageLocked() *image.Gray {
 	return img
 }
 
-// loadImageLocked decodes path, caching the result keyed by path + mtime so
-// Tick's once-a-second redraw doesn't re-decode an unchanged file.
 func (m *Machine) loadImageLocked(path string) (*image.Gray, error) {
 	info, err := os.Stat(path)
 	if err != nil {

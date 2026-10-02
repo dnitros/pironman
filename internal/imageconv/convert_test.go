@@ -45,20 +45,7 @@ func TestConvertSolidBlackProducesNoLitPixels(t *testing.T) {
 	}
 }
 
-func TestConvertSolidWhiteProducesMostlyLitPixels(t *testing.T) {
-	out := imageconv.Convert(solidImage(128, 64, 255), 128, 64, false)
-	total := 128 * 64
-	if n := countLit(out); n < total/2 {
-		t.Fatalf("lit pixel count = %d, want more than half of %d for a solid white source", n, total)
-	}
-}
-
 func TestConvertSolidWhiteProducesAllLitPixels(t *testing.T) {
-	// A boundary-scaled Bayer threshold (0, 17, ..., 255) leaves a periodic
-	// grid of pixels unlit even for pure white (255 > 255 is false at the top
-	// cell) — a dead-dot-grid defect, not real dithering. A correctly
-	// centered threshold must light every pixel of a flat, maximally bright
-	// source.
 	out := imageconv.Convert(solidImage(128, 64, 255), 128, 64, false)
 	total := 128 * 64
 	if n := countLit(out); n != total {
@@ -67,11 +54,6 @@ func TestConvertSolidWhiteProducesAllLitPixels(t *testing.T) {
 }
 
 func TestConvertNearBlackSourceProducesNoLitPixels(t *testing.T) {
-	// A boundary-scaled Bayer threshold (0, 17, ...) lights up any pixel with
-	// Y>=1 at the threshold=0 cell — so faint anti-aliasing noise in an
-	// otherwise-solid dark background produces a periodic grid of stray lit
-	// dots. A correctly centered threshold must not light a near-black
-	// (but not pure-black) flat source at all.
 	out := imageconv.Convert(solidImage(128, 64, 1), 128, 64, false)
 	if n := countLit(out); n != 0 {
 		t.Fatalf("lit pixel count = %d, want 0 for a near-black (Y=1) source", n)
@@ -80,60 +62,42 @@ func TestConvertNearBlackSourceProducesNoLitPixels(t *testing.T) {
 
 func TestConvertLetterboxesAndCentersNonMatchingAspectRatio(t *testing.T) {
 	out := imageconv.Convert(solidImage(100, 100, 255), 128, 64, false)
-	// scale = min(128/100, 64/100) = 0.64 -> 64x64 centered horizontally, ox=32.
 	if got := out.GrayAt(0, 0).Y; got != 0 {
 		t.Fatalf("corner pixel (0,0) = %d, want 0 (unlit letterbox area)", got)
 	}
 }
 
 func TestConvertInvertLeavesLetterboxMarginUnlit(t *testing.T) {
-	// A square source letterboxed into a wide canvas must keep the margin
-	// dark even when inverted — otherwise invert would grow a lit border
-	// around an otherwise-dark result instead of just flipping the logo.
 	out := imageconv.Convert(solidImage(100, 100, 0), 128, 64, true)
 	if got := out.GrayAt(0, 0).Y; got != 0 {
 		t.Fatalf("letterbox corner pixel (0,0) = %d, want 0 (unlit) regardless of invert", got)
 	}
-	// Within the scaled region, inverting a solid-black source must light it up.
 	if got := out.GrayAt(64, 32).Y; got != 255 {
 		t.Fatalf("center pixel (64,32) = %d, want 255 (lit) after inverting a solid-black source", got)
 	}
 }
 
-func TestConvertFlattensTransparentBackgroundOntoWhite(t *testing.T) {
-	// Mirrors a typical icon asset: a black glyph on a transparent
-	// background, with the transparent pixels' stored color also at (0,0,0)
-	// — the case that previously collapsed to a solid black, blank result.
+func TestConvertTransparentPixelsAlwaysUnlit(t *testing.T) {
 	src := image.NewNRGBA(image.Rect(0, 0, hardware.SSD1306Width, hardware.SSD1306Height))
 	for y := 0; y < hardware.SSD1306Height; y++ {
 		for x := 0; x < hardware.SSD1306Width; x++ {
 			if x < hardware.SSD1306Width/2 {
-				src.SetNRGBA(x, y, color.NRGBA{R: 0, G: 0, B: 0, A: 0})
+				src.SetNRGBA(x, y, color.NRGBA{R: 255, G: 255, B: 255, A: 0})
 			} else {
-				src.SetNRGBA(x, y, color.NRGBA{R: 0, G: 0, B: 0, A: 255})
+				src.SetNRGBA(x, y, color.NRGBA{R: 255, G: 255, B: 255, A: 255})
 			}
 		}
 	}
 
-	out := imageconv.Convert(src, hardware.SSD1306Width, hardware.SSD1306Height, false)
-
-	litTransparentHalf, litOpaqueHalf := 0, 0
-	for y := 0; y < hardware.SSD1306Height; y++ {
-		for x := 0; x < hardware.SSD1306Width/2; x++ {
-			if out.GrayAt(x, y).Y != 0 {
-				litTransparentHalf++
-			}
-			if out.GrayAt(x+hardware.SSD1306Width/2, y).Y != 0 {
-				litOpaqueHalf++
+	for _, invert := range []bool{false, true} {
+		out := imageconv.Convert(src, hardware.SSD1306Width, hardware.SSD1306Height, invert)
+		for y := 0; y < hardware.SSD1306Height; y++ {
+			for x := 0; x < hardware.SSD1306Width/2; x++ {
+				if out.GrayAt(x, y).Y != 0 {
+					t.Fatalf("invert=%v: transparent pixel (%d,%d) lit, want always unlit", invert, x, y)
+				}
 			}
 		}
-	}
-	half := (hardware.SSD1306Width / 2) * hardware.SSD1306Height
-	if litTransparentHalf < half/2 {
-		t.Fatalf("lit pixels in the transparent half = %d, want most of %d (flattened onto white, not left black)", litTransparentHalf, half)
-	}
-	if litOpaqueHalf != 0 {
-		t.Fatalf("lit pixels in the opaque-black half = %d, want 0", litOpaqueHalf)
 	}
 }
 

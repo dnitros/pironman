@@ -77,9 +77,6 @@ func newOLEDImageCmd() *cobra.Command {
 }
 
 func runOLEDImage(socketPath string, paths []string, interval int, invert bool) error {
-	// The daemon runs with a different (and in practice unrelated) working
-	// directory, so a relative path must be resolved here, against the
-	// invoking shell's cwd, before it crosses the socket.
 	anyPaths := make([]any, len(paths))
 	for i, p := range paths {
 		abs, err := filepath.Abs(p)

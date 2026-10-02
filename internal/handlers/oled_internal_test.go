@@ -382,7 +382,6 @@ func TestOLEDHandlersImageInvertFlipsPersistedResult(t *testing.T) {
 
 	path := startTestDaemon(t, OLEDHandlers(machine, &cfg, cfgPath, &sync.Mutex{}))
 
-	// writeTestSourcePBM produces an all-unlit (Y=0) source image.
 	resp, err := ipc.Send(path, "oled.image", map[string]any{
 		"paths":  []any{writeTestSourcePBM(t)},
 		"invert": true,
@@ -442,9 +441,6 @@ func TestOLEDHandlersImageReplacingPathsRemovesOrphanedFiles(t *testing.T) {
 
 	path := startTestDaemon(t, OLEDHandlers(machine, &cfg, cfgPath, &sync.Mutex{}))
 
-	// Persisted filenames are positional (image-0, image-1, ...), so an
-	// orphan can only appear when a later call configures fewer images than
-	// a previous one left behind.
 	resp, err := ipc.Send(path, "oled.image", map[string]any{"paths": []any{writeTestSourcePBM(t), writeTestSourcePBM(t)}})
 	if err != nil {
 		t.Fatalf("Send: %v", err)

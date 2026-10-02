@@ -158,9 +158,6 @@ func persistOLEDImage(cfg *config.Config, cfgPath string, paths []string, interv
 	return nil
 }
 
-// removeOrphanedImages deletes previously-persisted images that the new
-// config no longer references, so repeated `oled image` calls don't leak
-// files under the images directory indefinitely.
 func removeOrphanedImages(previous, stored []string) {
 	for _, p := range previous {
 		if !slices.Contains(stored, p) {

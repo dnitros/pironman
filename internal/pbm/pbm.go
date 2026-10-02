@@ -1,6 +1,3 @@
-// Package pbm decodes and encodes the PBM (Portable Bitmap) image format:
-// P1 (ASCII) and P4 (binary) on read, P4 on write. Per the format's
-// convention, a set bit is black (Y=0) and a clear bit is white (Y=255).
 package pbm
 
 import (
@@ -124,8 +121,6 @@ func bitToGray(bit int) color.Gray {
 	return color.Gray{Y: 255}
 }
 
-// readToken returns the next whitespace-delimited token, skipping leading
-// whitespace and "#"-prefixed comments per the PBM header grammar.
 func readToken(br *bufio.Reader) (string, error) {
 	for {
 		b, err := br.ReadByte()
