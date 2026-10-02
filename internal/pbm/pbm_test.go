@@ -65,25 +65,6 @@ func TestEncodeFileDecodeFileRoundTrip(t *testing.T) {
 	}
 }
 
-func TestDecodeP1ASCII(t *testing.T) {
-	src := "P1\n# a comment\n3 2\n0 1 0\n1 0 1\n"
-	img, err := pbm.Decode(strings.NewReader(src))
-	if err != nil {
-		t.Fatalf("Decode: %v", err)
-	}
-	if b := img.Bounds(); b.Dx() != 3 || b.Dy() != 2 {
-		t.Fatalf("Bounds() = %v, want 3x2", b)
-	}
-	want := [][]uint8{{255, 0, 255}, {0, 255, 0}}
-	for y, row := range want {
-		for x, y8 := range row {
-			if got := img.GrayAt(x, y).Y; got != y8 {
-				t.Fatalf("pixel (%d,%d) = %d, want %d", x, y, got, y8)
-			}
-		}
-	}
-}
-
 func TestDecodeRejectsUnsupportedMagic(t *testing.T) {
 	if _, err := pbm.Decode(strings.NewReader("P5\n1 1\n\x00")); err == nil {
 		t.Fatalf("expected an error for an unsupported PBM magic")

@@ -17,7 +17,7 @@ func Decode(r io.Reader) (*image.Gray, error) {
 	if err != nil {
 		return nil, fmt.Errorf("pbm: read magic: %w", err)
 	}
-	if magic != "P1" && magic != "P4" {
+	if magic != "P4" {
 		return nil, fmt.Errorf("pbm: unsupported magic %q", magic)
 	}
 
@@ -34,19 +34,6 @@ func Decode(r io.Reader) (*image.Gray, error) {
 	}
 
 	img := image.NewGray(image.Rect(0, 0, width, height))
-
-	if magic == "P1" {
-		for y := 0; y < height; y++ {
-			for x := 0; x < width; x++ {
-				bit, err := readIntToken(br)
-				if err != nil {
-					return nil, fmt.Errorf("pbm: read pixel (%d,%d): %w", x, y, err)
-				}
-				img.SetGray(x, y, bitToGray(bit))
-			}
-		}
-		return img, nil
-	}
 
 	rowBytes := (width + 7) / 8
 	row := make([]byte, rowBytes)
