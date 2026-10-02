@@ -3,7 +3,6 @@ package imageconv_test
 import (
 	"image"
 	"image/color"
-	"image/jpeg"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -33,109 +32,108 @@ func countLit(img *image.Gray) int {
 }
 
 func TestConvertOutputHasExactTargetSize(t *testing.T) {
-	out := imageconv.Convert(solidImage(50, 200, 128), 128, 64)
+	out := imageconv.Convert(solidImage(50, 200, 128), 128, 64, false)
 	if b := out.Bounds(); b.Dx() != 128 || b.Dy() != 64 {
 		t.Fatalf("Bounds() = %v, want 128x64", b)
 	}
 }
 
 func TestConvertSolidBlackProducesNoLitPixels(t *testing.T) {
-	out := imageconv.Convert(solidImage(128, 64, 0), 128, 64)
+	out := imageconv.Convert(solidImage(128, 64, 0), 128, 64, false)
 	if n := countLit(out); n != 0 {
 		t.Fatalf("lit pixel count = %d, want 0 for a solid black source", n)
 	}
 }
 
+func TestConvertSolidWhiteProducesMostlyLitPixels(t *testing.T) {
+	out := imageconv.Convert(solidImage(128, 64, 255), 128, 64, false)
+	total := 128 * 64
+	if n := countLit(out); n < total/2 {
+		t.Fatalf("lit pixel count = %d, want more than half of %d for a solid white source", n, total)
+	}
+}
+
 func TestConvertSolidWhiteProducesAllLitPixels(t *testing.T) {
-	// l-you's threshold band tops out at 0xffff*0.634, so a fully opaque,
-	// maximally bright source clears it at every Bayer cell, not just most.
-	out := imageconv.Convert(solidImage(128, 64, 255), 128, 64)
+	// A boundary-scaled Bayer threshold (0, 17, ..., 255) leaves a periodic
+	// grid of pixels unlit even for pure white (255 > 255 is false at the top
+	// cell) — a dead-dot-grid defect, not real dithering. A correctly
+	// centered threshold must light every pixel of a flat, maximally bright
+	// source.
+	out := imageconv.Convert(solidImage(128, 64, 255), 128, 64, false)
 	total := 128 * 64
 	if n := countLit(out); n != total {
 		t.Fatalf("lit pixel count = %d, want all %d lit for a solid white source", n, total)
 	}
 }
 
+func TestConvertNearBlackSourceProducesNoLitPixels(t *testing.T) {
+	// A boundary-scaled Bayer threshold (0, 17, ...) lights up any pixel with
+	// Y>=1 at the threshold=0 cell — so faint anti-aliasing noise in an
+	// otherwise-solid dark background produces a periodic grid of stray lit
+	// dots. A correctly centered threshold must not light a near-black
+	// (but not pure-black) flat source at all.
+	out := imageconv.Convert(solidImage(128, 64, 1), 128, 64, false)
+	if n := countLit(out); n != 0 {
+		t.Fatalf("lit pixel count = %d, want 0 for a near-black (Y=1) source", n)
+	}
+}
+
 func TestConvertLetterboxesAndCentersNonMatchingAspectRatio(t *testing.T) {
-	out := imageconv.Convert(solidImage(100, 100, 255), 128, 64)
+	out := imageconv.Convert(solidImage(100, 100, 255), 128, 64, false)
 	// scale = min(128/100, 64/100) = 0.64 -> 64x64 centered horizontally, ox=32.
 	if got := out.GrayAt(0, 0).Y; got != 0 {
 		t.Fatalf("corner pixel (0,0) = %d, want 0 (unlit letterbox area)", got)
 	}
 }
 
-func TestConvertTransparentPixelsNeverLightRegardlessOfStoredColor(t *testing.T) {
-	// l-you's isWhitePixel treats alpha==0 as never-lit unconditionally —
-	// unlike this project's previous flatten-onto-white approach, a
-	// transparent region stays dark even if its stored RGB is pure white.
+func TestConvertInvertLeavesLetterboxMarginUnlit(t *testing.T) {
+	// A square source letterboxed into a wide canvas must keep the margin
+	// dark even when inverted — otherwise invert would grow a lit border
+	// around an otherwise-dark result instead of just flipping the logo.
+	out := imageconv.Convert(solidImage(100, 100, 0), 128, 64, true)
+	if got := out.GrayAt(0, 0).Y; got != 0 {
+		t.Fatalf("letterbox corner pixel (0,0) = %d, want 0 (unlit) regardless of invert", got)
+	}
+	// Within the scaled region, inverting a solid-black source must light it up.
+	if got := out.GrayAt(64, 32).Y; got != 255 {
+		t.Fatalf("center pixel (64,32) = %d, want 255 (lit) after inverting a solid-black source", got)
+	}
+}
+
+func TestConvertFlattensTransparentBackgroundOntoWhite(t *testing.T) {
+	// Mirrors a typical icon asset: a black glyph on a transparent
+	// background, with the transparent pixels' stored color also at (0,0,0)
+	// — the case that previously collapsed to a solid black, blank result.
 	src := image.NewNRGBA(image.Rect(0, 0, hardware.SSD1306Width, hardware.SSD1306Height))
 	for y := 0; y < hardware.SSD1306Height; y++ {
 		for x := 0; x < hardware.SSD1306Width; x++ {
 			if x < hardware.SSD1306Width/2 {
-				src.SetNRGBA(x, y, color.NRGBA{R: 255, G: 255, B: 255, A: 0})
+				src.SetNRGBA(x, y, color.NRGBA{R: 0, G: 0, B: 0, A: 0})
 			} else {
-				src.SetNRGBA(x, y, color.NRGBA{R: 255, G: 255, B: 255, A: 255})
+				src.SetNRGBA(x, y, color.NRGBA{R: 0, G: 0, B: 0, A: 255})
 			}
 		}
 	}
 
-	out := imageconv.Convert(src, hardware.SSD1306Width, hardware.SSD1306Height)
+	out := imageconv.Convert(src, hardware.SSD1306Width, hardware.SSD1306Height, false)
 
+	litTransparentHalf, litOpaqueHalf := 0, 0
 	for y := 0; y < hardware.SSD1306Height; y++ {
 		for x := 0; x < hardware.SSD1306Width/2; x++ {
 			if out.GrayAt(x, y).Y != 0 {
-				t.Fatalf("transparent pixel (%d,%d) lit, want unlit regardless of its stored color", x, y)
+				litTransparentHalf++
 			}
-		}
-		for x := hardware.SSD1306Width / 2; x < hardware.SSD1306Width; x++ {
-			if out.GrayAt(x, y).Y == 0 {
-				t.Fatalf("opaque white pixel (%d,%d) unlit, want lit", x, y)
-			}
-		}
-	}
-}
-
-// TestPersistImageConvertsJPEGAndPersistsPBM ports l-you/pironman5-go's own
-// TestConvertToPBM, through this project's PersistImage entry point rather
-// than their standalone ConvertToPBM (not ported — it's a redundant wrapper
-// around Convert + pbm.EncodeFile, which PersistImage already does).
-func TestPersistImageConvertsJPEGAndPersistsPBM(t *testing.T) {
-	srcPath := filepath.Join(t.TempDir(), "source.jpg")
-	src := image.NewRGBA(image.Rect(0, 0, 32, 16))
-	for y := 0; y < 16; y++ {
-		for x := 0; x < 32; x++ {
-			if x < 24 {
-				src.Set(x, y, color.White)
+			if out.GrayAt(x+hardware.SSD1306Width/2, y).Y != 0 {
+				litOpaqueHalf++
 			}
 		}
 	}
-	f, err := os.Create(srcPath)
-	if err != nil {
-		t.Fatalf("create %s: %v", srcPath, err)
+	half := (hardware.SSD1306Width / 2) * hardware.SSD1306Height
+	if litTransparentHalf < half/2 {
+		t.Fatalf("lit pixels in the transparent half = %d, want most of %d (flattened onto white, not left black)", litTransparentHalf, half)
 	}
-	if err := jpeg.Encode(f, src, nil); err != nil {
-		_ = f.Close()
-		t.Fatalf("jpeg.Encode: %v", err)
-	}
-	if err := f.Close(); err != nil {
-		t.Fatalf("close: %v", err)
-	}
-
-	destDir := t.TempDir()
-	destPath, err := imageconv.PersistImage(srcPath, destDir, "image-0")
-	if err != nil {
-		t.Fatalf("PersistImage: %v", err)
-	}
-
-	got, err := pbm.DecodeFile(destPath)
-	if err != nil {
-		t.Fatalf("pbm.DecodeFile: %v", err)
-	}
-	if got.Bounds().Dx() != hardware.SSD1306Width || got.Bounds().Dy() != hardware.SSD1306Height {
-		t.Fatalf("Bounds() = %v, want %dx%d", got.Bounds(), hardware.SSD1306Width, hardware.SSD1306Height)
-	}
-	if countLit(got) == 0 {
-		t.Fatal("converted image rendered no lit pixels")
+	if litOpaqueHalf != 0 {
+		t.Fatalf("lit pixels in the opaque-black half = %d, want 0", litOpaqueHalf)
 	}
 }
 
@@ -144,7 +142,7 @@ func TestPersistImageConvertsPNGAndPersistsPBM(t *testing.T) {
 	writePNG(t, srcPath, solidImage(64, 64, 255))
 
 	destDir := t.TempDir()
-	destPath, err := imageconv.PersistImage(srcPath, destDir, "image-0")
+	destPath, err := imageconv.PersistImage(srcPath, destDir, "image-0", false)
 	if err != nil {
 		t.Fatalf("PersistImage: %v", err)
 	}
@@ -171,7 +169,7 @@ func TestPersistImageAcceptsCorrectlySizedPBM(t *testing.T) {
 	}
 
 	destDir := t.TempDir()
-	destPath, err := imageconv.PersistImage(srcPath, destDir, "image-0")
+	destPath, err := imageconv.PersistImage(srcPath, destDir, "image-0", false)
 	if err != nil {
 		t.Fatalf("PersistImage: %v", err)
 	}
@@ -188,11 +186,11 @@ func TestPersistImageDistinctDestNamesAvoidCollisionForSameBasename(t *testing.T
 	writePNG(t, srcB, solidImage(32, 32, 0))
 
 	destDir := t.TempDir()
-	destA, err := imageconv.PersistImage(srcA, destDir, "image-0")
+	destA, err := imageconv.PersistImage(srcA, destDir, "image-0", false)
 	if err != nil {
 		t.Fatalf("PersistImage(A): %v", err)
 	}
-	destB, err := imageconv.PersistImage(srcB, destDir, "image-1")
+	destB, err := imageconv.PersistImage(srcB, destDir, "image-1", false)
 	if err != nil {
 		t.Fatalf("PersistImage(B): %v", err)
 	}
@@ -219,8 +217,55 @@ func TestPersistImageRejectsWrongSizedPBM(t *testing.T) {
 		t.Fatalf("EncodeFile: %v", err)
 	}
 
-	if _, err := imageconv.PersistImage(srcPath, t.TempDir(), "image-0"); err == nil {
+	if _, err := imageconv.PersistImage(srcPath, t.TempDir(), "image-0", false); err == nil {
 		t.Fatalf("expected an error for a .pbm that isn't exactly %dx%d", hardware.SSD1306Width, hardware.SSD1306Height)
+	}
+}
+
+func TestInvertFlipsEveryPixel(t *testing.T) {
+	img := image.NewGray(image.Rect(0, 0, 4, 1))
+	img.SetGray(0, 0, color.Gray{Y: 0})
+	img.SetGray(1, 0, color.Gray{Y: 255})
+	img.SetGray(2, 0, color.Gray{Y: 0})
+	img.SetGray(3, 0, color.Gray{Y: 255})
+
+	out := imageconv.Invert(img)
+
+	want := []uint8{255, 0, 255, 0}
+	for x, w := range want {
+		if got := out.GrayAt(x, 0).Y; got != w {
+			t.Fatalf("pixel %d = %d, want %d", x, got, w)
+		}
+	}
+}
+
+func TestPersistImageWithInvertFlipsPersistedResult(t *testing.T) {
+	srcPath := filepath.Join(t.TempDir(), "photo.png")
+	writePNG(t, srcPath, solidImage(hardware.SSD1306Width, hardware.SSD1306Height, 255))
+
+	destDir := t.TempDir()
+	plainPath, err := imageconv.PersistImage(srcPath, destDir, "plain", false)
+	if err != nil {
+		t.Fatalf("PersistImage(invert=false): %v", err)
+	}
+	invertedPath, err := imageconv.PersistImage(srcPath, destDir, "inverted", true)
+	if err != nil {
+		t.Fatalf("PersistImage(invert=true): %v", err)
+	}
+
+	plain, err := pbm.DecodeFile(plainPath)
+	if err != nil {
+		t.Fatalf("pbm.DecodeFile(plain): %v", err)
+	}
+	inverted, err := pbm.DecodeFile(invertedPath)
+	if err != nil {
+		t.Fatalf("pbm.DecodeFile(inverted): %v", err)
+	}
+
+	for i := range plain.Pix {
+		if plain.Pix[i] == inverted.Pix[i] {
+			t.Fatalf("pixel %d: plain=%d inverted=%d, want every pixel flipped", i, plain.Pix[i], inverted.Pix[i])
+		}
 	}
 }
 

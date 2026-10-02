@@ -1,72 +1,93 @@
 // Package imageconv converts arbitrary images into the SSD1306's native
 // 128x64 1-bit format and persists the result as a .pbm file.
-//
-// Convert and isWhitePixel below are ported byte-for-byte from
-// github.com/l-you/pironman5-go's internal/imageconv/convert.go (GPLv2),
-// for a direct A/B comparison against this project's own conversion
-// approach — only the oled.Width/oled.Height references were renamed to
-// this project's hardware.SSD1306Width/SSD1306Height, since that package
-// doesn't exist here. PersistImage/loadAsDisplayImage are this project's
-// own glue, unchanged in shape from before this port, minus the invert
-// parameter (l-you's Convert has no equivalent).
 package imageconv
 
 import (
 	"fmt"
 	"image"
 	"image/color"
+	stddraw "image/draw"
 	_ "image/jpeg"
 	_ "image/png"
-	"math"
 	"os"
 	"path/filepath"
 	"strings"
 
-	xdraw "golang.org/x/image/draw"
+	"golang.org/x/image/draw"
 
 	"github.com/dnitros/pironman/internal/hardware"
 	"github.com/dnitros/pironman/internal/pbm"
 )
 
-func Convert(src image.Image, width, height int) *image.Gray {
-	dst := image.NewGray(image.Rect(0, 0, width, height))
-	bounds := src.Bounds()
-	if bounds.Dx() < 1 || bounds.Dy() < 1 {
-		return dst
-	}
-	scale := math.Min(float64(width)/float64(bounds.Dx()), float64(height)/float64(bounds.Dy()))
-	scaledWidth := max(1, int(math.Round(float64(bounds.Dx())*scale)))
-	scaledHeight := max(1, int(math.Round(float64(bounds.Dy())*scale)))
-	resized := image.NewRGBA(image.Rect(0, 0, scaledWidth, scaledHeight))
-	xdraw.CatmullRom.Scale(resized, resized.Bounds(), src, bounds, xdraw.Over, nil)
-	x0 := (width - scaledWidth) / 2
-	y0 := (height - scaledHeight) / 2
-	for y := 0; y < scaledHeight; y++ {
-		for x := 0; x < scaledWidth; x++ {
-			if !isWhitePixel(resized.At(x, y), x, y) {
-				continue
-			}
-			dst.SetGray(x0+x, y0+y, color.Gray{Y: 255})
-		}
-	}
-	return dst
+// bayer4x4 is a 4x4 ordered-dither threshold matrix, cell values 0-15.
+var bayer4x4 = [4][4]int{
+	{0, 8, 2, 10},
+	{12, 4, 14, 6},
+	{3, 11, 1, 9},
+	{15, 7, 13, 5},
 }
 
-func isWhitePixel(c color.Color, x, y int) bool {
-	r, g, b, a := c.RGBA()
-	if a == 0 {
-		return false
+// bayerThreshold scales a 0-15 matrix cell to the center of its bucket in the
+// 0-255 range (8, 24, ..., 248), not its edge (0, 17, ..., 255). At the edge
+// scaling, the threshold=0 cell lights up any pixel with Y>=1 — including
+// faint anti-aliasing noise in an otherwise-solid dark background — and the
+// threshold=255 cell never lights up even a pure Y=255 pixel. Both show up as
+// a periodic grid of stray dots across flat regions, not genuine dithering.
+func bayerThreshold(v int) uint8 {
+	return uint8(v*16 + 8)
+}
+
+// Convert scales src to fit within w x h preserving aspect ratio, centers it
+// on a w x h canvas, and ordered-dithers it to 1-bit (every pixel is Y=0 or
+// Y=255). The canvas outside the scaled image is always left unlit — invert
+// flips which side of the dithering threshold counts as lit for the scaled
+// image itself, without touching that outer margin, so a non-matching aspect
+// ratio doesn't grow a lit border around an otherwise dark result.
+func Convert(src image.Image, w, h int, invert bool) *image.Gray {
+	sb := src.Bounds()
+	sw, sh := sb.Dx(), sb.Dy()
+	if sw <= 0 || sh <= 0 {
+		return image.NewGray(image.Rect(0, 0, w, h))
 	}
-	luma := float64(299*r+587*g+114*b) / 1000
-	luma *= float64(a) / 0xffff
-	bayer := [4][4]float64{
-		{0, 8, 2, 10},
-		{12, 4, 14, 6},
-		{3, 11, 1, 9},
-		{15, 7, 13, 5},
+	src = flattenOnWhite(src)
+
+	scale := min(float64(w)/float64(sw), float64(h)/float64(sh))
+	tw := max(1, int(float64(sw)*scale))
+	th := max(1, int(float64(sh)*scale))
+
+	scaled := image.NewGray(image.Rect(0, 0, tw, th))
+	draw.CatmullRom.Scale(scaled, scaled.Bounds(), src, sb, draw.Src, nil)
+
+	out := image.NewGray(image.Rect(0, 0, w, h))
+	ox, oy := (w-tw)/2, (h-th)/2
+	for y := 0; y < th; y++ {
+		for x := 0; x < tw; x++ {
+			threshold := bayerThreshold(bayer4x4[y%4][x%4])
+			lit := scaled.GrayAt(x, y).Y > threshold
+			if invert {
+				lit = !lit
+			}
+			if lit {
+				out.SetGray(ox+x, oy+y, color.Gray{Y: 255})
+			}
+		}
 	}
-	threshold := 0xffff * (0.35 + bayer[y%4][x%4]/16*0.3)
-	return luma >= threshold
+	return out
+}
+
+// flattenOnWhite composites src onto an opaque white background. A pixel's
+// color.Color.RGBA() always reports (0,0,0,0) once its alpha is 0, no matter
+// what color is actually stored there — so a transparent PNG (the common
+// case for icon assets: a colored glyph on a transparent background) would
+// otherwise convert to solid black, indistinguishable from a black glyph and
+// producing a blank display. Flattening first restores proper contrast; it's
+// a no-op for an already fully-opaque image.
+func flattenOnWhite(src image.Image) image.Image {
+	b := src.Bounds()
+	dst := image.NewRGBA(b)
+	stddraw.Draw(dst, b, image.White, image.Point{}, stddraw.Src)
+	stddraw.Draw(dst, b, src, b.Min, stddraw.Over)
+	return dst
 }
 
 // PersistImage converts srcPath (.png/.jpg/.pbm) to a 128x64 1-bit .pbm file
@@ -76,8 +97,13 @@ func isWhitePixel(c color.Color, x, y int) bool {
 // destName is caller-chosen rather than derived from srcPath's basename so
 // that persisting several source paths in one call can't collide on the
 // same destination file just because two sources share a filename.
-func PersistImage(srcPath, destDir, destName string) (string, error) {
-	img, err := loadAsDisplayImage(srcPath)
+//
+// invert flips which pixels light up — useful for a dark-glyph-on-light
+// source (the common case after flattenOnWhite) when a light-glyph-on-dark
+// result is wanted instead. It's applied once here and baked into the
+// persisted .pbm, not reapplied at render time.
+func PersistImage(srcPath, destDir, destName string, invert bool) (string, error) {
+	img, err := loadAsDisplayImage(srcPath, invert)
 	if err != nil {
 		return "", err
 	}
@@ -93,7 +119,22 @@ func PersistImage(srcPath, destDir, destName string) (string, error) {
 	return destPath, nil
 }
 
-func loadAsDisplayImage(srcPath string) (*image.Gray, error) {
+// Invert flips every pixel of a 1-bit image (lit becomes unlit and vice
+// versa).
+func Invert(img *image.Gray) *image.Gray {
+	out := image.NewGray(img.Bounds())
+	for i, v := range img.Pix {
+		out.Pix[i] = 255 - v
+	}
+	return out
+}
+
+// loadAsDisplayImage decodes srcPath into a ready-to-persist 128x64 1-bit
+// image. A .pbm source has no letterbox margin to preserve (it must already
+// be exactly 128x64), so invert there is a plain full-image flip via Invert;
+// a .png/.jpg source goes through Convert, which applies invert only to the
+// scaled image itself.
+func loadAsDisplayImage(srcPath string, invert bool) (*image.Gray, error) {
 	if strings.EqualFold(filepath.Ext(srcPath), ".pbm") {
 		img, err := pbm.DecodeFile(srcPath)
 		if err != nil {
@@ -101,6 +142,9 @@ func loadAsDisplayImage(srcPath string) (*image.Gray, error) {
 		}
 		if b := img.Bounds(); b.Dx() != hardware.SSD1306Width || b.Dy() != hardware.SSD1306Height {
 			return nil, fmt.Errorf("imageconv: %s is %dx%d, must be exactly %dx%d", srcPath, b.Dx(), b.Dy(), hardware.SSD1306Width, hardware.SSD1306Height)
+		}
+		if invert {
+			img = Invert(img)
 		}
 		return img, nil
 	}
@@ -115,5 +159,5 @@ func loadAsDisplayImage(srcPath string) (*image.Gray, error) {
 	if err != nil {
 		return nil, fmt.Errorf("imageconv: decode %s: %w", srcPath, err)
 	}
-	return Convert(src, hardware.SSD1306Width, hardware.SSD1306Height), nil
+	return Convert(src, hardware.SSD1306Width, hardware.SSD1306Height, invert), nil
 }
