@@ -118,8 +118,9 @@ func (m *Machine) Off() error {
 	return m.setRelayLocked(false)
 }
 
-// Mode selects one of the five temperature-driven curves and evaluates it
-// immediately. on/off are not valid here; use On/Off instead.
+// Mode selects one of the five named curves and evaluates it immediately
+// (always_on skips temperature entirely). on/off are not valid here; use
+// On/Off instead.
 func (m *Machine) Mode(name string) error {
 	if err := ValidateMode(name); err != nil {
 		return err
@@ -136,7 +137,7 @@ func (m *Machine) Tick() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if m.mode == ModeOn || m.mode == ModeOff {
+	if ValidateMode(m.mode) != nil {
 		return nil
 	}
 	return m.evaluateLocked()

@@ -79,7 +79,7 @@ func Load(path string) (Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return Config{}, fmt.Errorf("parse config %s: %w", path, err)
 	}
-	// Phase 3 persisted "auto" for the fan's only curve; it's now "balanced".
+	// "auto" is a legacy fan mode no longer selectable; treat it as balanced.
 	if cfg.Fan.CaseFanState == "auto" {
 		cfg.Fan.CaseFanState = "balanced"
 	}
