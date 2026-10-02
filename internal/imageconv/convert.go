@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	stddraw "image/draw"
 	_ "image/jpeg"
 	_ "image/png"
 	"os"
@@ -35,6 +36,7 @@ func Convert(src image.Image, w, h int) *image.Gray {
 	if sw <= 0 || sh <= 0 {
 		return image.NewGray(image.Rect(0, 0, w, h))
 	}
+	src = flattenOnWhite(src)
 
 	scale := min(float64(w)/float64(sw), float64(h)/float64(sh))
 	tw := max(1, int(float64(sw)*scale))
@@ -54,6 +56,21 @@ func Convert(src image.Image, w, h int) *image.Gray {
 		}
 	}
 	return out
+}
+
+// flattenOnWhite composites src onto an opaque white background. A pixel's
+// color.Color.RGBA() always reports (0,0,0,0) once its alpha is 0, no matter
+// what color is actually stored there — so a transparent PNG (the common
+// case for icon assets: a colored glyph on a transparent background) would
+// otherwise convert to solid black, indistinguishable from a black glyph and
+// producing a blank display. Flattening first restores proper contrast; it's
+// a no-op for an already fully-opaque image.
+func flattenOnWhite(src image.Image) image.Image {
+	b := src.Bounds()
+	dst := image.NewRGBA(b)
+	stddraw.Draw(dst, b, image.White, image.Point{}, stddraw.Src)
+	stddraw.Draw(dst, b, src, b.Min, stddraw.Over)
+	return dst
 }
 
 // PersistImage converts srcPath (.png/.jpg/.pbm) to a 128x64 1-bit .pbm file

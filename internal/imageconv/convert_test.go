@@ -2,6 +2,7 @@ package imageconv_test
 
 import (
 	"image"
+	"image/color"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -57,6 +58,43 @@ func TestConvertLetterboxesAndCentersNonMatchingAspectRatio(t *testing.T) {
 	// scale = min(128/100, 64/100) = 0.64 -> 64x64 centered horizontally, ox=32.
 	if got := out.GrayAt(0, 0).Y; got != 0 {
 		t.Fatalf("corner pixel (0,0) = %d, want 0 (unlit letterbox area)", got)
+	}
+}
+
+func TestConvertFlattensTransparentBackgroundOntoWhite(t *testing.T) {
+	// Mirrors a typical icon asset: a black glyph on a transparent
+	// background, with the transparent pixels' stored color also at (0,0,0)
+	// — the case that previously collapsed to a solid black, blank result.
+	src := image.NewNRGBA(image.Rect(0, 0, hardware.SSD1306Width, hardware.SSD1306Height))
+	for y := 0; y < hardware.SSD1306Height; y++ {
+		for x := 0; x < hardware.SSD1306Width; x++ {
+			if x < hardware.SSD1306Width/2 {
+				src.SetNRGBA(x, y, color.NRGBA{R: 0, G: 0, B: 0, A: 0})
+			} else {
+				src.SetNRGBA(x, y, color.NRGBA{R: 0, G: 0, B: 0, A: 255})
+			}
+		}
+	}
+
+	out := imageconv.Convert(src, hardware.SSD1306Width, hardware.SSD1306Height)
+
+	litTransparentHalf, litOpaqueHalf := 0, 0
+	for y := 0; y < hardware.SSD1306Height; y++ {
+		for x := 0; x < hardware.SSD1306Width/2; x++ {
+			if out.GrayAt(x, y).Y != 0 {
+				litTransparentHalf++
+			}
+			if out.GrayAt(x+hardware.SSD1306Width/2, y).Y != 0 {
+				litOpaqueHalf++
+			}
+		}
+	}
+	half := (hardware.SSD1306Width / 2) * hardware.SSD1306Height
+	if litTransparentHalf < half/2 {
+		t.Fatalf("lit pixels in the transparent half = %d, want most of %d (flattened onto white, not left black)", litTransparentHalf, half)
+	}
+	if litOpaqueHalf != 0 {
+		t.Fatalf("lit pixels in the opaque-black half = %d, want 0", litOpaqueHalf)
 	}
 }
 
