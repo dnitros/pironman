@@ -79,7 +79,7 @@ func TestStoreOnTurnsStripOnAndUpdatesState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("On: %v", err)
 	}
-	if !state.Enabled || !store.Enabled() {
+	if !state.Enabled || !store.State().Enabled {
 		t.Fatalf("expected state to be enabled after On()")
 	}
 	if strip.onCalls != 1 {
@@ -98,7 +98,7 @@ func TestStoreOffTurnsStripOffAndUpdatesState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Off: %v", err)
 	}
-	if state.Enabled || store.Enabled() {
+	if state.Enabled || store.State().Enabled {
 		t.Fatalf("expected state to be disabled after Off()")
 	}
 	if strip.offCalls != 1 {
@@ -116,7 +116,7 @@ func TestStoreOnPropagatesHardwareErrorWithoutChangingState(t *testing.T) {
 	if _, err := store.On(); err == nil {
 		t.Fatalf("expected On() to propagate the hardware error")
 	}
-	if store.Enabled() {
+	if store.State().Enabled {
 		t.Fatalf("expected state to remain disabled after a failed On()")
 	}
 }
@@ -132,8 +132,8 @@ func TestStoreSetColorAppliesImmediatelyWhenEnabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SetColor: %v", err)
 	}
-	if state.Color != "#ff00ff" || store.Color() != "#ff00ff" {
-		t.Fatalf("expected color #ff00ff, got state=%q store=%q", state.Color, store.Color())
+	if state.Color != "#ff00ff" || store.State().Color != "#ff00ff" {
+		t.Fatalf("expected color #ff00ff, got state=%q store=%q", state.Color, store.State().Color)
 	}
 	if strip.setColorCalls != 1 {
 		t.Fatalf("expected strip.SetColor() to be called once, got %d", strip.setColorCalls)
@@ -203,8 +203,8 @@ func TestStoreSetColorPropagatesHardwareErrorWithoutChangingState(t *testing.T) 
 	if _, err := store.SetColor("#ff00ff"); err == nil {
 		t.Fatalf("expected SetColor to propagate the hardware error")
 	}
-	if store.Color() != "#000000" {
-		t.Fatalf("expected color to remain unchanged after a failed reapply, got %q", store.Color())
+	if store.State().Color != "#000000" {
+		t.Fatalf("expected color to remain unchanged after a failed reapply, got %q", store.State().Color)
 	}
 }
 
@@ -257,8 +257,8 @@ func TestStoreSetBrightnessAppliesImmediatelyWhenEnabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SetBrightness: %v", err)
 	}
-	if state.Brightness != 50 || store.Brightness() != 50 {
-		t.Fatalf("expected brightness 50, got state=%d store=%d", state.Brightness, store.Brightness())
+	if state.Brightness != 50 || store.State().Brightness != 50 {
+		t.Fatalf("expected brightness 50, got state=%d store=%d", state.Brightness, store.State().Brightness)
 	}
 	if strip.lastR != 0x7f || strip.lastG != 0x7f || strip.lastB != 0x7f {
 		t.Fatalf("expected strip color bytes scaled to 50%% (0x7f, 0x7f, 0x7f), got (%#x, %#x, %#x)", strip.lastR, strip.lastG, strip.lastB)
@@ -337,8 +337,8 @@ func TestStoreSetBrightnessPropagatesHardwareErrorWithoutChangingState(t *testin
 	if _, err := store.SetBrightness(50); err == nil {
 		t.Fatalf("expected SetBrightness to propagate the hardware error")
 	}
-	if store.Brightness() != 100 {
-		t.Fatalf("expected brightness to remain unchanged after a failed reapply, got %d", store.Brightness())
+	if store.State().Brightness != 100 {
+		t.Fatalf("expected brightness to remain unchanged after a failed reapply, got %d", store.State().Brightness)
 	}
 }
 
@@ -370,13 +370,13 @@ func TestStoreBrightnessPersistsAcrossSimulatedRestart(t *testing.T) {
 	}
 
 	restartedStrip := &fakeStrip{}
-	restarted, err := rgb.NewStore(restartedStrip, rgb.State{Enabled: true, Color: "#ffffff", Brightness: store.Brightness()})
+	restarted, err := rgb.NewStore(restartedStrip, rgb.State{Enabled: true, Color: "#ffffff", Brightness: store.State().Brightness})
 	if err != nil {
 		t.Fatalf("NewStore (restart): %v", err)
 	}
 
-	if restarted.Brightness() != 42 {
-		t.Fatalf("expected the brightness to survive the simulated restart, got %d", restarted.Brightness())
+	if restarted.State().Brightness != 42 {
+		t.Fatalf("expected the brightness to survive the simulated restart, got %d", restarted.State().Brightness)
 	}
 }
 
@@ -391,13 +391,13 @@ func TestStoreColorPersistsAcrossSimulatedRestart(t *testing.T) {
 	}
 
 	restartedStrip := &fakeStrip{}
-	restarted, err := rgb.NewStore(restartedStrip, rgb.State{Enabled: true, Color: store.Color()})
+	restarted, err := rgb.NewStore(restartedStrip, rgb.State{Enabled: true, Color: store.State().Color})
 	if err != nil {
 		t.Fatalf("NewStore (restart): %v", err)
 	}
 
-	if restarted.Color() != "#123456" {
-		t.Fatalf("expected the color to survive the simulated restart, got %q", restarted.Color())
+	if restarted.State().Color != "#123456" {
+		t.Fatalf("expected the color to survive the simulated restart, got %q", restarted.State().Color)
 	}
 }
 
@@ -434,12 +434,12 @@ func TestStorePersistsAcrossSimulatedRestart(t *testing.T) {
 	}
 
 	restartedStrip := &fakeStrip{}
-	restarted, err := rgb.NewStore(restartedStrip, rgb.State{Enabled: store.Enabled()})
+	restarted, err := rgb.NewStore(restartedStrip, rgb.State{Enabled: store.State().Enabled})
 	if err != nil {
 		t.Fatalf("NewStore (restart): %v", err)
 	}
 
-	if restarted.Enabled() {
+	if restarted.State().Enabled {
 		t.Fatalf("expected the disabled state to survive the simulated restart")
 	}
 	if restartedStrip.offCalls != 1 || restartedStrip.onCalls != 0 {
