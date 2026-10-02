@@ -62,19 +62,21 @@ func runOLEDPage(socketPath, page string) error {
 
 func newOLEDImageCmd() *cobra.Command {
 	var interval int
+	var invert bool
 	cmd := &cobra.Command{
-		Use:   "image [--interval seconds] <path>...",
+		Use:   "image [--interval seconds] [--invert] <path>...",
 		Short: "Convert, persist, and show one or more images on the OLED image page",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runOLEDImage(ipc.SocketPath(), args, interval)
+			return runOLEDImage(ipc.SocketPath(), args, interval, invert)
 		},
 	}
 	cmd.Flags().IntVar(&interval, "interval", 0, "seconds between images when rotating multiple paths (default: the configured value, 5s initially)")
+	cmd.Flags().BoolVar(&invert, "invert", false, "swap which pixels light up (e.g. a dark glyph on a light background becomes a light glyph on a dark background)")
 	return cmd
 }
 
-func runOLEDImage(socketPath string, paths []string, interval int) error {
+func runOLEDImage(socketPath string, paths []string, interval int, invert bool) error {
 	// The daemon runs with a different (and in practice unrelated) working
 	// directory, so a relative path must be resolved here, against the
 	// invoking shell's cwd, before it crosses the socket.
@@ -87,7 +89,7 @@ func runOLEDImage(socketPath string, paths []string, interval int) error {
 		anyPaths[i] = abs
 	}
 
-	args := map[string]any{"paths": anyPaths}
+	args := map[string]any{"paths": anyPaths, "invert": invert}
 	if interval > 0 {
 		args["interval"] = interval
 	}

@@ -29,8 +29,11 @@ var bayer4x4 = [4][4]int{
 
 // Convert scales src to fit within w x h preserving aspect ratio, centers it
 // on a w x h canvas, and ordered-dithers it to 1-bit (every pixel is Y=0 or
-// Y=255). The canvas outside the scaled image is left unlit.
-func Convert(src image.Image, w, h int) *image.Gray {
+// Y=255). The canvas outside the scaled image is always left unlit — invert
+// flips which side of the dithering threshold counts as lit for the scaled
+// image itself, without touching that outer margin, so a non-matching aspect
+// ratio doesn't grow a lit border around an otherwise dark result.
+func Convert(src image.Image, w, h int, invert bool) *image.Gray {
 	sb := src.Bounds()
 	sw, sh := sb.Dx(), sb.Dy()
 	if sw <= 0 || sh <= 0 {
@@ -50,7 +53,11 @@ func Convert(src image.Image, w, h int) *image.Gray {
 	for y := 0; y < th; y++ {
 		for x := 0; x < tw; x++ {
 			threshold := uint8(bayer4x4[y%4][x%4] * 17)
-			if scaled.GrayAt(x, y).Y > threshold {
+			lit := scaled.GrayAt(x, y).Y > threshold
+			if invert {
+				lit = !lit
+			}
+			if lit {
 				out.SetGray(ox+x, oy+y, color.Gray{Y: 255})
 			}
 		}
@@ -80,8 +87,13 @@ func flattenOnWhite(src image.Image) image.Image {
 // destName is caller-chosen rather than derived from srcPath's basename so
 // that persisting several source paths in one call can't collide on the
 // same destination file just because two sources share a filename.
-func PersistImage(srcPath, destDir, destName string) (string, error) {
-	img, err := loadAsDisplayImage(srcPath)
+//
+// invert flips which pixels light up — useful for a dark-glyph-on-light
+// source (the common case after flattenOnWhite) when a light-glyph-on-dark
+// result is wanted instead. It's applied once here and baked into the
+// persisted .pbm, not reapplied at render time.
+func PersistImage(srcPath, destDir, destName string, invert bool) (string, error) {
+	img, err := loadAsDisplayImage(srcPath, invert)
 	if err != nil {
 		return "", err
 	}
@@ -97,7 +109,22 @@ func PersistImage(srcPath, destDir, destName string) (string, error) {
 	return destPath, nil
 }
 
-func loadAsDisplayImage(srcPath string) (*image.Gray, error) {
+// Invert flips every pixel of a 1-bit image (lit becomes unlit and vice
+// versa).
+func Invert(img *image.Gray) *image.Gray {
+	out := image.NewGray(img.Bounds())
+	for i, v := range img.Pix {
+		out.Pix[i] = 255 - v
+	}
+	return out
+}
+
+// loadAsDisplayImage decodes srcPath into a ready-to-persist 128x64 1-bit
+// image. A .pbm source has no letterbox margin to preserve (it must already
+// be exactly 128x64), so invert there is a plain full-image flip via Invert;
+// a .png/.jpg source goes through Convert, which applies invert only to the
+// scaled image itself.
+func loadAsDisplayImage(srcPath string, invert bool) (*image.Gray, error) {
 	if strings.EqualFold(filepath.Ext(srcPath), ".pbm") {
 		img, err := pbm.DecodeFile(srcPath)
 		if err != nil {
@@ -105,6 +132,9 @@ func loadAsDisplayImage(srcPath string) (*image.Gray, error) {
 		}
 		if b := img.Bounds(); b.Dx() != hardware.SSD1306Width || b.Dy() != hardware.SSD1306Height {
 			return nil, fmt.Errorf("imageconv: %s is %dx%d, must be exactly %dx%d", srcPath, b.Dx(), b.Dy(), hardware.SSD1306Width, hardware.SSD1306Height)
+		}
+		if invert {
+			img = Invert(img)
 		}
 		return img, nil
 	}
@@ -119,5 +149,5 @@ func loadAsDisplayImage(srcPath string) (*image.Gray, error) {
 	if err != nil {
 		return nil, fmt.Errorf("imageconv: decode %s: %w", srcPath, err)
 	}
-	return Convert(src, hardware.SSD1306Width, hardware.SSD1306Height), nil
+	return Convert(src, hardware.SSD1306Width, hardware.SSD1306Height, invert), nil
 }

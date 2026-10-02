@@ -374,6 +374,41 @@ func TestOLEDHandlersImageAppliesIntervalOverride(t *testing.T) {
 	}
 }
 
+func TestOLEDHandlersImageInvertFlipsPersistedResult(t *testing.T) {
+	machine, _ := newTestMachineWithImagePage(t, false)
+	cfg := config.Default()
+	cfg.OLED.PageOrder = append(cfg.OLED.PageOrder, oled.PageImage)
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+
+	path := startTestDaemon(t, OLEDHandlers(machine, &cfg, cfgPath, &sync.Mutex{}))
+
+	// writeTestSourcePBM produces an all-unlit (Y=0) source image.
+	resp, err := ipc.Send(path, "oled.image", map[string]any{
+		"paths":  []any{writeTestSourcePBM(t)},
+		"invert": true,
+	})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if !resp.OK {
+		t.Fatalf("expected ok=true, got error %q", resp.Error)
+	}
+
+	saved, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	img, err := pbm.DecodeFile(saved.OLED.ImagePaths[0])
+	if err != nil {
+		t.Fatalf("pbm.DecodeFile: %v", err)
+	}
+	for _, v := range img.Pix {
+		if v == 0 {
+			t.Fatalf("expected every pixel to be lit after inverting an all-unlit source, found an unlit pixel")
+		}
+	}
+}
+
 func TestOLEDHandlersImagePropagatesConversionErrorWithoutPersisting(t *testing.T) {
 	machine, _ := newTestMachineWithImagePage(t, false)
 	cfg := config.Default()

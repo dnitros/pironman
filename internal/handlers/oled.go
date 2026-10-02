@@ -116,11 +116,12 @@ func oledImageHandler(machine *oled.Machine, cfg *config.Config, cfgPath string,
 		if v, ok := args["interval"].(float64); ok && v > 0 {
 			interval = int(v)
 		}
+		invert, _ := args["invert"].(bool)
 
 		imagesDir := filepath.Join(filepath.Dir(cfgPath), "images")
 		stored := make([]string, 0, len(paths))
 		for i, p := range paths {
-			dest, err := imageconv.PersistImage(p, imagesDir, fmt.Sprintf("image-%d", i))
+			dest, err := imageconv.PersistImage(p, imagesDir, fmt.Sprintf("image-%d", i), invert)
 			if err != nil {
 				return nil, fmt.Errorf("oled.image: %w", err)
 			}
