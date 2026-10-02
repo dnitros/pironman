@@ -8,22 +8,25 @@ import (
 	"github.com/dnitros/pironman/internal/ipc"
 )
 
-func TestRunFanSetRoundTrip(t *testing.T) {
+func TestRunFanModeRoundTrip(t *testing.T) {
 	path := startTestDaemon(t, map[string]ipc.Handler{
-		"fan.auto": func(args map[string]any) (any, error) {
-			return map[string]any{"mode": "auto", "relay_on": false}, nil
+		"fan.mode": func(args map[string]any) (any, error) {
+			if args["name"] != "balanced" {
+				t.Fatalf("expected name=balanced, got %v", args["name"])
+			}
+			return map[string]any{"mode": "balanced", "relay_on": false}, nil
 		},
 	})
 
-	if err := runFanSet(path, "auto"); err != nil {
-		t.Fatalf("runFanSet: %v", err)
+	if err := runFanMode(path, "balanced"); err != nil {
+		t.Fatalf("runFanMode: %v", err)
 	}
 }
 
-func TestRunFanSetFailsClearlyWhenDaemonUnreachable(t *testing.T) {
+func TestRunFanModeFailsClearlyWhenDaemonUnreachable(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "no-such-daemon.sock")
 
-	err := runFanSet(path, "on")
+	err := runFanMode(path, "balanced")
 	if err == nil {
 		t.Fatalf("expected an error when the daemon is unreachable")
 	}
@@ -32,14 +35,14 @@ func TestRunFanSetFailsClearlyWhenDaemonUnreachable(t *testing.T) {
 	}
 }
 
-func TestRunFanSetPropagatesHandlerError(t *testing.T) {
+func TestRunFanModePropagatesHandlerError(t *testing.T) {
 	path := startTestDaemon(t, map[string]ipc.Handler{
-		"fan.on": func(args map[string]any) (any, error) {
+		"fan.mode": func(args map[string]any) (any, error) {
 			return nil, errBoom
 		},
 	})
 
-	err := runFanSet(path, "on")
+	err := runFanMode(path, "bogus")
 	if err == nil {
 		t.Fatalf("expected an error when the handler fails")
 	}

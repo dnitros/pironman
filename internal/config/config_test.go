@@ -26,7 +26,7 @@ func TestSaveThenLoadRoundTrips(t *testing.T) {
 
 	want := config.Default()
 	want.RGB.Color = "#123456"
-	want.Fan.CaseFanState = "on"
+	want.Fan.CaseFanState = "performance"
 
 	if err := want.Save(path); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -54,7 +54,7 @@ func TestSaveCreatesMissingParentDir(t *testing.T) {
 
 func TestLoadPartialFileFillsGapsFromDefaults(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
-	if err := os.WriteFile(path, []byte("fan:\n  case_fan_state: on\n"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("fan:\n  case_fan_state: performance\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
@@ -64,7 +64,7 @@ func TestLoadPartialFileFillsGapsFromDefaults(t *testing.T) {
 	}
 
 	want := config.Default()
-	want.Fan.CaseFanState = "on"
+	want.Fan.CaseFanState = "performance"
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("expected unset sections to keep their defaults, got %#v", got)
 	}

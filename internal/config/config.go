@@ -61,7 +61,7 @@ func Default() Config {
 			PageOrder:             []string{"mix", "performance", "ips", "disk"},
 		},
 		Fan: Fan{
-			CaseFanState: "auto",
+			CaseFanState: "balanced",
 		},
 	}
 }

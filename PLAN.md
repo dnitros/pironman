@@ -13,7 +13,7 @@ The daemon is a single process with five long-lived goroutines:
 
 1. **RGB loop** — applies the current RGB state (color/brightness in v1; effects in v2) to the WS2812 strip over SPI.
 2. **OLED loop** — drives the current page's rendering and the sleep-timeout/content-scroll timers (see `CONTEXT.md`: page advance vs. content scroll).
-3. **Case-fan loop** — evaluates the case fan's on/off/auto state against the PWM fan's read-only temperature reading (v1: fixed threshold; v2: selectable mode) and drives the GPIO relay.
+3. **Case-fan loop** — evaluates the case fan's selected curve against the PWM fan's read-only temperature reading (v1: one fixed curve; v2: five selectable curves, shipped Phase 6) and drives the GPIO relay.
 4. **PWM-fan reader** — polls `/sys/class/thermal/cooling_device0/cur_state` and the `fan1_input` hwmon path on a short interval; feeds the case-fan loop and the `status` command. Read-only — see ADR context: this fan is the Pi 5's own official active cooler, governed by the kernel, not by this tool (`CONTEXT.md`: PWM fan vs. case fan).
 5. **Power-button watcher** — blocks on evdev reads, classifies press events (click / double-click / long-press / long-press-released — see `CONTEXT.md`), and dispatches the corresponding action (OLED advance/previous, shutdown-confirm, shutdown).
 
@@ -43,7 +43,7 @@ internal/
         shutdowner.go    — shells out to `shutdown -h now`
     rgb/                 — RGB domain logic against a hardware.WS2812 interface
     oled/                — page state machine: advance/previous/sleep/content-scroll
-    fan/                 — case-fan on/off/auto/mode logic + PWM-fan reading
+    fan/                 — case-fan mode logic + PWM-fan reading
     powerbutton/         — press-event classification → action dispatch
     systemdunit/         — unit file template, install/uninstall
     buildinfo/           — version/build metadata for `status`/`doctor`
@@ -83,12 +83,12 @@ oled:
   page_order: [mix, performance, ips, disk]
 
 fan:
-  case_fan_state: auto     # on | off | auto  (v1)
-                           # v2 adds: case_fan_mode, case_fan_custom_threshold_c
+  case_fan_state: balanced  # always_on | performance | cool | balanced | quiet
+                            # (Phase 6, shipped; replaces v1's on | off | auto)
   # the PWM fan (Pi 5's own cooler) is never configured here — read-only, see CONTEXT.md
 ```
 
-The v1 `auto` threshold (67.5°C, matching the original's "Balanced" curve) is a hardcoded constant in `internal/fan`, not a config field — it isn't configurable in v1, so a schema entry would be premature. `case_fan_mode` and its threshold fields get added in v2 when `fan mode <name>` ships.
+Each curve's on/off threshold pair (always_on/performance/cool/balanced/quiet) is a hardcoded constant in `internal/fan`, not a config field — no custom-threshold field was added. Phase 6 reused the same `case_fan_state` field for the curve name rather than adding a second `case_fan_mode` field, and removed the manual `fan on`/`fan off` override rather than keeping it alongside the curves (see PER-46).
 
 ## 5. Library selection
 
@@ -128,7 +128,7 @@ The v1 `auto` threshold (67.5°C, matching the original's "Balanced" curve) is a
 
 **v2+ (unchanged from the brief, refined where this plan's findings apply):**
 - Phase 5 — RGB effects (breathing/flow/flow_reverse/rainbow/rainbow_reverse/hue_cycle, `--speed`).
-- Phase 6 — Case-fan modes: `always_on`/`performance`/`cool`/`balanced`/`quiet`, at ≈50/60/67.5/75°C (correcting the brief's guessed 70°C for `quiet` to the original's actual ≈75°C), each with hysteresis matching the original's level logic. Adds `case_fan_mode` and a custom-threshold field to the config schema.
+- Phase 6 — Case-fan modes (shipped, PER-47): `always_on`/`performance`/`cool`/`balanced`/`quiet`, at always-on/50/60/67.5/75°C on and 45/55/62.5/70°C off (correcting the brief's guessed 70°C for `quiet`'s *on* threshold to the original's actual 75°C — 70°C is `quiet`'s *off* threshold), each a fixed 5°C hysteresis band. Reuses `case_fan_state` for the curve name — no second config field or custom threshold was added. Manual `fan on`/`fan off` were removed rather than kept alongside the curves, and the legacy `auto` value is not migrated.
 - Phase 7 — OLED custom text/image, rotation, sleep-timeout as a configurable value (v1 ships it as a fixed default; v2 exposes it in the CLI/config).
 
 ## 7. Testing / validation strategy
