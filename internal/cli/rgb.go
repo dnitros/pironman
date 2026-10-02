@@ -18,6 +18,7 @@ func newRGBCmd() *cobra.Command {
 	cmd.AddCommand(newRGBSetCmd("off", "Turn the RGB strip off"))
 	cmd.AddCommand(newRGBColorCmd())
 	cmd.AddCommand(newRGBBrightnessCmd())
+	cmd.AddCommand(newRGBStyleCmd())
 	return cmd
 }
 
@@ -85,5 +86,39 @@ func runRGBBrightness(socketPath string, percent int) error {
 	}
 
 	fmt.Printf("RGB strip brightness set to %d\n", percent)
+	return nil
+}
+
+func newRGBStyleCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "style <name>",
+		Short: "Set the RGB strip's lighting style",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var speed *int
+			if cmd.Flags().Changed("speed") {
+				v, err := cmd.Flags().GetInt("speed")
+				if err != nil {
+					return err
+				}
+				speed = &v
+			}
+			return runRGBStyle(ipc.SocketPath(), args[0], speed)
+		},
+	}
+	cmd.Flags().Int("speed", 0, "animation speed (0-100); leaves the configured speed unchanged if omitted")
+	return cmd
+}
+
+func runRGBStyle(socketPath, name string, speed *int) error {
+	reqArgs := map[string]any{"name": name}
+	if speed != nil {
+		reqArgs["speed"] = *speed
+	}
+	if _, err := sendCommand(socketPath, "rgb.style", reqArgs, "rgb style"); err != nil {
+		return err
+	}
+
+	fmt.Printf("RGB strip style set to %s\n", name)
 	return nil
 }

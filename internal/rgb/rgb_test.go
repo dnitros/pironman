@@ -4,15 +4,17 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/dnitros/pironman/internal/hardware"
 	"github.com/dnitros/pironman/internal/rgb"
 )
 
 var errBoom = errors.New("boom")
 
 type fakeStrip struct {
-	onCalls, offCalls, setColorCalls int
-	onErr, offErr                    error
-	lastR, lastG, lastB              byte
+	onCalls, offCalls, setColorCalls, writeFrameCalls int
+	onErr, offErr, writeFrameErr                      error
+	lastR, lastG, lastB                               byte
+	lastFrame                                         []hardware.Color
 }
 
 func (f *fakeStrip) On() error {
@@ -28,6 +30,12 @@ func (f *fakeStrip) Off() error {
 func (f *fakeStrip) SetColor(r, g, b byte) {
 	f.setColorCalls++
 	f.lastR, f.lastG, f.lastB = r, g, b
+}
+
+func (f *fakeStrip) WriteFrame(pixels []hardware.Color) error {
+	f.writeFrameCalls++
+	f.lastFrame = pixels
+	return f.writeFrameErr
 }
 
 func TestNewStoreAppliesEnabledInitialStateOnce(t *testing.T) {
@@ -390,6 +398,28 @@ func TestStoreColorPersistsAcrossSimulatedRestart(t *testing.T) {
 
 	if restarted.Color() != "#123456" {
 		t.Fatalf("expected the color to survive the simulated restart, got %q", restarted.Color())
+	}
+}
+
+func TestStoreStyleAndSpeedPersistAcrossSimulatedRestart(t *testing.T) {
+	strip := &fakeStrip{}
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: false, Style: "solid", Speed: 50})
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	speed := 90
+	if _, err := store.SetStyle("breathing", &speed); err != nil {
+		t.Fatalf("SetStyle: %v", err)
+	}
+
+	restartedStrip := &fakeStrip{}
+	restarted, err := rgb.NewStore(restartedStrip, rgb.State{Enabled: false, Style: store.State().Style, Speed: store.State().Speed})
+	if err != nil {
+		t.Fatalf("NewStore (restart): %v", err)
+	}
+
+	if restarted.State().Style != "breathing" || restarted.State().Speed != 90 {
+		t.Fatalf("expected style/speed to survive the simulated restart, got %+v", restarted.State())
 	}
 }
 

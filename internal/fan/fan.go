@@ -14,6 +14,7 @@ const (
 	ModeAuto = "auto"
 )
 
+// Matches the original Pironman 5's "Balanced" threshold curve.
 const (
 	AutoOnThresholdC  = 67.5
 	AutoOffThresholdC = 62.5
