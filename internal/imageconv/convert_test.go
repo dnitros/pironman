@@ -53,6 +53,31 @@ func TestConvertSolidWhiteProducesMostlyLitPixels(t *testing.T) {
 	}
 }
 
+func TestConvertSolidWhiteProducesAllLitPixels(t *testing.T) {
+	// A boundary-scaled Bayer threshold (0, 17, ..., 255) leaves a periodic
+	// grid of pixels unlit even for pure white (255 > 255 is false at the top
+	// cell) — a dead-dot-grid defect, not real dithering. A correctly
+	// centered threshold must light every pixel of a flat, maximally bright
+	// source.
+	out := imageconv.Convert(solidImage(128, 64, 255), 128, 64, false)
+	total := 128 * 64
+	if n := countLit(out); n != total {
+		t.Fatalf("lit pixel count = %d, want all %d lit for a solid white source", n, total)
+	}
+}
+
+func TestConvertNearBlackSourceProducesNoLitPixels(t *testing.T) {
+	// A boundary-scaled Bayer threshold (0, 17, ...) lights up any pixel with
+	// Y>=1 at the threshold=0 cell — so faint anti-aliasing noise in an
+	// otherwise-solid dark background produces a periodic grid of stray lit
+	// dots. A correctly centered threshold must not light a near-black
+	// (but not pure-black) flat source at all.
+	out := imageconv.Convert(solidImage(128, 64, 1), 128, 64, false)
+	if n := countLit(out); n != 0 {
+		t.Fatalf("lit pixel count = %d, want 0 for a near-black (Y=1) source", n)
+	}
+}
+
 func TestConvertLetterboxesAndCentersNonMatchingAspectRatio(t *testing.T) {
 	out := imageconv.Convert(solidImage(100, 100, 255), 128, 64, false)
 	// scale = min(128/100, 64/100) = 0.64 -> 64x64 centered horizontally, ox=32.

@@ -19,12 +19,22 @@ import (
 	"github.com/dnitros/pironman/internal/pbm"
 )
 
-// bayer4x4 is a 4x4 ordered-dither threshold matrix, scaled from 0-15 to 0-255.
+// bayer4x4 is a 4x4 ordered-dither threshold matrix, cell values 0-15.
 var bayer4x4 = [4][4]int{
 	{0, 8, 2, 10},
 	{12, 4, 14, 6},
 	{3, 11, 1, 9},
 	{15, 7, 13, 5},
+}
+
+// bayerThreshold scales a 0-15 matrix cell to the center of its bucket in the
+// 0-255 range (8, 24, ..., 248), not its edge (0, 17, ..., 255). At the edge
+// scaling, the threshold=0 cell lights up any pixel with Y>=1 — including
+// faint anti-aliasing noise in an otherwise-solid dark background — and the
+// threshold=255 cell never lights up even a pure Y=255 pixel. Both show up as
+// a periodic grid of stray dots across flat regions, not genuine dithering.
+func bayerThreshold(v int) uint8 {
+	return uint8(v*16 + 8)
 }
 
 // Convert scales src to fit within w x h preserving aspect ratio, centers it
@@ -52,7 +62,7 @@ func Convert(src image.Image, w, h int, invert bool) *image.Gray {
 	ox, oy := (w-tw)/2, (h-th)/2
 	for y := 0; y < th; y++ {
 		for x := 0; x < tw; x++ {
-			threshold := uint8(bayer4x4[y%4][x%4] * 17)
+			threshold := bayerThreshold(bayer4x4[y%4][x%4])
 			lit := scaled.GrayAt(x, y).Y > threshold
 			if invert {
 				lit = !lit
