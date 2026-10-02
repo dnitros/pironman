@@ -381,7 +381,7 @@ func TestServeDaemonRunsShutdownHookAfterServe(t *testing.T) {
 	if strip.offCalls != 1 {
 		t.Fatalf("expected Serve to be followed by exactly one Off() call, got %d", strip.offCalls)
 	}
-	if rgbStore.State().Enabled {
+	if rgbStore.Enabled() {
 		t.Fatalf("expected RGB store to report disabled after shutdown")
 	}
 }

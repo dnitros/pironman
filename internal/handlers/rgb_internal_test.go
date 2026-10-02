@@ -217,8 +217,8 @@ func TestRGBHandlersConcurrentCallsKeepConfigInSyncWithStore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("config.Load: %v", err)
 	}
-	if saved.RGB.Enabled != store.State().Enabled {
-		t.Fatalf("persisted config (enabled=%v) disagrees with the store's final state (enabled=%v) after concurrent calls", saved.RGB.Enabled, store.State().Enabled)
+	if saved.RGB.Enabled != store.Enabled() {
+		t.Fatalf("persisted config (enabled=%v) disagrees with the store's final state (enabled=%v) after concurrent calls", saved.RGB.Enabled, store.Enabled())
 	}
 }
 
