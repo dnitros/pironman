@@ -14,6 +14,8 @@ type StatusInfo struct {
 	Enabled        bool
 	Color          string
 	Brightness     int
+	Style          string
+	Speed          int
 	OLEDAwake      bool
 	OLEDPage       string
 	CaseFanMode    string
@@ -50,6 +52,8 @@ func gatherStatus(socketPath string) (StatusInfo, error) {
 	enabled, _ := data["enabled"].(bool)
 	color, _ := data["color"].(string)
 	brightness, _ := data["brightness"].(float64)
+	style, _ := data["style"].(string)
+	speed, _ := data["speed"].(float64)
 	oledAwake, _ := data["oled_awake"].(bool)
 	oledPage, _ := data["oled_page"].(string)
 	caseFanMode, _ := data["case_fan_mode"].(string)
@@ -58,7 +62,7 @@ func gatherStatus(socketPath string) (StatusInfo, error) {
 	pwmFanSpeedRPM, _ := data["pwm_fan_speed_rpm"].(float64)
 
 	return StatusInfo{
-		Enabled: enabled, Color: color, Brightness: int(brightness),
+		Enabled: enabled, Color: color, Brightness: int(brightness), Style: style, Speed: int(speed),
 		OLEDAwake: oledAwake, OLEDPage: oledPage,
 		CaseFanMode: caseFanMode, CaseFanRelayOn: caseFanRelayOn,
 		PWMFanLevel: int(pwmFanLevel), PWMFanSpeedRPM: int(pwmFanSpeedRPM),
@@ -71,6 +75,8 @@ func printStatus(info StatusInfo) {
 	fmt.Fprintf(w, "  enabled:\t%t\n", info.Enabled)
 	fmt.Fprintf(w, "  color:\t%s\n", info.Color)
 	fmt.Fprintf(w, "  brightness:\t%d%%\n", info.Brightness)
+	fmt.Fprintf(w, "  style:\t%s\n", info.Style)
+	fmt.Fprintf(w, "  speed:\t%d%%\n", info.Speed)
 	w.Flush()
 
 	fmt.Println("OLED")

@@ -22,7 +22,7 @@ func (f *fakePWMFanReader) Read() (hardware.PWMFanState, error) {
 
 func TestStatusHandlerReportsCurrentState(t *testing.T) {
 	strip := &fakeStrip{}
-	store, err := rgb.NewStore(strip, rgb.State{Enabled: true, Color: "#ff00ff", Brightness: 42})
+	store, err := rgb.NewStore(strip, rgb.State{Enabled: true, Color: "#ff00ff", Brightness: 42, Style: rgb.StyleBreathing, Speed: 65})
 	if err != nil {
 		t.Fatalf("NewStore: %v", err)
 	}
@@ -52,6 +52,12 @@ func TestStatusHandlerReportsCurrentState(t *testing.T) {
 	}
 	if data["brightness"] != float64(42) {
 		t.Fatalf("expected brightness=42, got %v", data["brightness"])
+	}
+	if data["style"] != rgb.StyleBreathing {
+		t.Fatalf("expected style=%s, got %v", rgb.StyleBreathing, data["style"])
+	}
+	if data["speed"] != float64(65) {
+		t.Fatalf("expected speed=65, got %v", data["speed"])
 	}
 	if data["oled_awake"] != true {
 		t.Fatalf("expected oled_awake=true, got %v", data["oled_awake"])

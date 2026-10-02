@@ -23,6 +23,8 @@ func StatusHandler(rgbStore *rgb.Store, oledMachine *oled.Machine, fanMachine *f
 			"enabled":           state.Enabled,
 			"color":             state.Color,
 			"brightness":        state.Brightness,
+			"style":             state.Style,
+			"speed":             state.Speed,
 			"oled_awake":        oledState.Awake,
 			"oled_page":         oledState.Page,
 			"case_fan_mode":     fanState.Mode,
