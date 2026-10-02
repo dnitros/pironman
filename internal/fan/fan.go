@@ -17,8 +17,6 @@ const (
 	ModeQuiet       = "quiet"
 )
 
-// Threshold pairs sourced from the original Pironman 5's pm_auto fan-control
-// code; always_on has no pair since it never compares temperature.
 const (
 	PerformanceOnThresholdC  = 50.0
 	PerformanceOffThresholdC = 45.0
@@ -43,7 +41,6 @@ var curveThresholds = map[string]threshold{
 
 var curveNames = []string{ModeAlwaysOn, ModePerformance, ModeCool, ModeBalanced, ModeQuiet}
 
-// ValidateMode reports whether name is one of the five named curves.
 func ValidateMode(name string) error {
 	for _, n := range curveNames {
 		if name == n {
@@ -99,8 +96,6 @@ func (m *Machine) State() State {
 	return State{Mode: m.mode, RelayOn: m.relayOn}
 }
 
-// Mode selects one of the five named curves and evaluates it immediately
-// (always_on skips temperature entirely).
 func (m *Machine) Mode(name string) error {
 	if err := ValidateMode(name); err != nil {
 		return err
@@ -119,10 +114,6 @@ func (m *Machine) Tick() error {
 	return m.evaluateLocked()
 }
 
-// Off de-energizes the relay without changing the selected mode, so a
-// restart resumes the same curve. It's reached only from the daemon's
-// shutdown hook — there's no user-facing manual override, matching the
-// original hardware.
 func (m *Machine) Off() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
