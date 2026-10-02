@@ -236,12 +236,6 @@ func (s *Store) State() State {
 	return s.state
 }
 
-func (s *Store) Enabled() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.state.Enabled
-}
-
 func (s *Store) SetColor(hex string) (State, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -253,12 +247,6 @@ func (s *Store) SetColor(hex string) (State, error) {
 	return s.state, nil
 }
 
-func (s *Store) Color() string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.state.Color
-}
-
 func (s *Store) SetBrightness(percent int) (State, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -268,12 +256,6 @@ func (s *Store) SetBrightness(percent int) (State, error) {
 	}
 	s.state.Brightness = percent
 	return s.state, nil
-}
-
-func (s *Store) Brightness() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.state.Brightness
 }
 
 func (s *Store) applyScaled(hex string, percent int) error {
