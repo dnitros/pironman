@@ -13,7 +13,7 @@ func FanHandlers(machine *fan.Machine, cfg *config.Config, cfgPath string, cfgMu
 	return map[string]ipc.Handler{
 		"fan.on":   fanSetHandler(machine, cfg, cfgPath, cfgMu, fan.ModeOn),
 		"fan.off":  fanSetHandler(machine, cfg, cfgPath, cfgMu, fan.ModeOff),
-		"fan.auto": fanSetHandler(machine, cfg, cfgPath, cfgMu, fan.ModeAuto),
+		"fan.mode": fanModeHandler(machine, cfg, cfgPath, cfgMu),
 	}
 }
 
@@ -42,10 +42,34 @@ func fanSetHandler(machine *fan.Machine, cfg *config.Config, cfgPath string, opM
 			err = machine.On()
 		case fan.ModeOff:
 			err = machine.Off()
-		case fan.ModeAuto:
-			err = machine.Auto()
 		}
 		if err != nil {
+			return nil, fmt.Errorf("apply fan state: %w", err)
+		}
+
+		state := machine.State()
+		return map[string]any{"mode": state.Mode, "relay_on": state.RelayOn}, nil
+	}
+}
+
+func fanModeHandler(machine *fan.Machine, cfg *config.Config, cfgPath string, opMu *sync.Mutex) ipc.Handler {
+	return func(args map[string]any) (any, error) {
+		name, ok := args["name"].(string)
+		if !ok {
+			return nil, fmt.Errorf("fan.mode: missing \"name\" argument")
+		}
+		if err := fan.ValidateMode(name); err != nil {
+			return nil, err
+		}
+
+		opMu.Lock()
+		defer opMu.Unlock()
+
+		if err := persistFan(cfg, cfgPath, name); err != nil {
+			return nil, fmt.Errorf("persist fan state: %w", err)
+		}
+
+		if err := machine.Mode(name); err != nil {
 			return nil, fmt.Errorf("apply fan state: %w", err)
 		}
 

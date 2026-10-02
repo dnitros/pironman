@@ -2,6 +2,7 @@ package fan
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/dnitros/pironman/internal/hardware"
@@ -9,16 +10,51 @@ import (
 )
 
 const (
-	ModeOn   = "on"
-	ModeOff  = "off"
-	ModeAuto = "auto"
+	ModeOn          = "on"
+	ModeOff         = "off"
+	ModeAlwaysOn    = "always_on"
+	ModePerformance = "performance"
+	ModeCool        = "cool"
+	ModeBalanced    = "balanced"
+	ModeQuiet       = "quiet"
 )
 
-// Matches the original Pironman 5's "Balanced" threshold curve.
+// Threshold pairs sourced from the original Pironman 5's pm_auto fan-control
+// code; always_on has no pair since it never compares temperature.
 const (
-	AutoOnThresholdC  = 67.5
-	AutoOffThresholdC = 62.5
+	PerformanceOnThresholdC  = 50.0
+	PerformanceOffThresholdC = 45.0
+	CoolOnThresholdC         = 60.0
+	CoolOffThresholdC        = 55.0
+	BalancedOnThresholdC     = 67.5
+	BalancedOffThresholdC    = 62.5
+	QuietOnThresholdC        = 75.0
+	QuietOffThresholdC       = 70.0
 )
+
+type threshold struct {
+	onC, offC float64
+}
+
+var curveThresholds = map[string]threshold{
+	ModePerformance: {PerformanceOnThresholdC, PerformanceOffThresholdC},
+	ModeCool:        {CoolOnThresholdC, CoolOffThresholdC},
+	ModeBalanced:    {BalancedOnThresholdC, BalancedOffThresholdC},
+	ModeQuiet:       {QuietOnThresholdC, QuietOffThresholdC},
+}
+
+var curveNames = []string{ModeAlwaysOn, ModePerformance, ModeCool, ModeBalanced, ModeQuiet}
+
+// ValidateMode reports whether name is one of the five named curves accepted
+// by Mode (on/off go through On/Off instead, so they're not valid here).
+func ValidateMode(name string) error {
+	for _, n := range curveNames {
+		if name == n {
+			return nil
+		}
+	}
+	return fmt.Errorf("invalid fan mode %q: want one of %s", name, strings.Join(curveNames, ", "))
+}
 
 type State struct {
 	Mode    string
@@ -82,11 +118,17 @@ func (m *Machine) Off() error {
 	return m.setRelayLocked(false)
 }
 
-func (m *Machine) Auto() error {
+// Mode selects one of the five temperature-driven curves and evaluates it
+// immediately. on/off are not valid here; use On/Off instead.
+func (m *Machine) Mode(name string) error {
+	if err := ValidateMode(name); err != nil {
+		return err
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.mode = ModeAuto
+	m.mode = name
 	return m.evaluateLocked()
 }
 
@@ -94,7 +136,7 @@ func (m *Machine) Tick() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if m.mode != ModeAuto {
+	if m.mode == ModeOn || m.mode == ModeOff {
 		return nil
 	}
 	return m.evaluateLocked()
@@ -106,14 +148,21 @@ func (m *Machine) applyLocked() error {
 		return m.setRelayLocked(true)
 	case ModeOff:
 		return m.setRelayLocked(false)
-	case ModeAuto:
-		return m.evaluateLocked()
 	default:
-		return fmt.Errorf("fan: unknown mode %q", m.mode)
+		return m.evaluateLocked()
 	}
 }
 
 func (m *Machine) evaluateLocked() error {
+	if m.mode == ModeAlwaysOn {
+		return m.setRelayLocked(true)
+	}
+
+	t, ok := curveThresholds[m.mode]
+	if !ok {
+		return fmt.Errorf("fan: unknown mode %q", m.mode)
+	}
+
 	// ponytail: Snapshot() also reads mem/disk/network stats we don't need
 	// here; add a CPU-temp-only Source method if this per-second read shows
 	// up in profiling.
@@ -123,9 +172,9 @@ func (m *Machine) evaluateLocked() error {
 	}
 
 	switch {
-	case snap.CPUTempC > AutoOnThresholdC:
+	case snap.CPUTempC > t.onC:
 		return m.setRelayLocked(true)
-	case snap.CPUTempC < AutoOffThresholdC:
+	case snap.CPUTempC < t.offC:
 		return m.setRelayLocked(false)
 	default:
 		return nil
@@ -142,9 +191,9 @@ func (m *Machine) setRelayLocked(on bool) error {
 
 func validMode(mode string) bool {
 	switch mode {
-	case ModeOn, ModeOff, ModeAuto:
+	case ModeOn, ModeOff:
 		return true
 	default:
-		return false
+		return ValidateMode(mode) == nil
 	}
 }

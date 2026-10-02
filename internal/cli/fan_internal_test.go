@@ -10,13 +10,44 @@ import (
 
 func TestRunFanSetRoundTrip(t *testing.T) {
 	path := startTestDaemon(t, map[string]ipc.Handler{
-		"fan.auto": func(args map[string]any) (any, error) {
-			return map[string]any{"mode": "auto", "relay_on": false}, nil
+		"fan.on": func(args map[string]any) (any, error) {
+			return map[string]any{"mode": "on", "relay_on": true}, nil
 		},
 	})
 
-	if err := runFanSet(path, "auto"); err != nil {
+	if err := runFanSet(path, "on"); err != nil {
 		t.Fatalf("runFanSet: %v", err)
+	}
+}
+
+func TestRunFanModeRoundTrip(t *testing.T) {
+	path := startTestDaemon(t, map[string]ipc.Handler{
+		"fan.mode": func(args map[string]any) (any, error) {
+			if args["name"] != "balanced" {
+				t.Fatalf("expected name=balanced, got %v", args["name"])
+			}
+			return map[string]any{"mode": "balanced", "relay_on": false}, nil
+		},
+	})
+
+	if err := runFanMode(path, "balanced"); err != nil {
+		t.Fatalf("runFanMode: %v", err)
+	}
+}
+
+func TestRunFanModePropagatesHandlerError(t *testing.T) {
+	path := startTestDaemon(t, map[string]ipc.Handler{
+		"fan.mode": func(args map[string]any) (any, error) {
+			return nil, errBoom
+		},
+	})
+
+	err := runFanMode(path, "bogus")
+	if err == nil {
+		t.Fatalf("expected an error when the handler fails")
+	}
+	if !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("expected error to include the handler's message, got: %v", err)
 	}
 }
 

@@ -27,7 +27,7 @@ func TestStatusHandlerReportsCurrentState(t *testing.T) {
 		t.Fatalf("NewStore: %v", err)
 	}
 	oledMachine, _ := newTestMachine(t, true)
-	fanMachine, _ := newTestFanMachine(t, fan.ModeAuto)
+	fanMachine, _ := newTestFanMachine(t, fan.ModeBalanced)
 	pwmReader := &fakePWMFanReader{state: hardware.PWMFanState{Level: 2, SpeedRPM: 1800}}
 
 	path := startTestDaemon(t, map[string]ipc.Handler{"status": StatusHandler(store, oledMachine, fanMachine, pwmReader)})
@@ -65,8 +65,8 @@ func TestStatusHandlerReportsCurrentState(t *testing.T) {
 	if data["oled_page"] != oled.PageMix {
 		t.Fatalf("expected oled_page=%s, got %v", oled.PageMix, data["oled_page"])
 	}
-	if data["case_fan_mode"] != fan.ModeAuto {
-		t.Fatalf("expected case_fan_mode=%s, got %v", fan.ModeAuto, data["case_fan_mode"])
+	if data["case_fan_mode"] != fan.ModeBalanced {
+		t.Fatalf("expected case_fan_mode=%s, got %v", fan.ModeBalanced, data["case_fan_mode"])
 	}
 	if data["case_fan_relay_on"] != false {
 		t.Fatalf("expected case_fan_relay_on=false, got %v", data["case_fan_relay_on"])

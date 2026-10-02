@@ -70,6 +70,21 @@ func TestLoadPartialFileFillsGapsFromDefaults(t *testing.T) {
 	}
 }
 
+func TestLoadMigratesLegacyAutoFanModeToBalanced(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("fan:\n  case_fan_state: auto\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	got, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.Fan.CaseFanState != "balanced" {
+		t.Fatalf("expected the legacy auto value to migrate to balanced, got %q", got.Fan.CaseFanState)
+	}
+}
+
 func TestPathRespectsEnvVarOverride(t *testing.T) {
 	t.Setenv(config.PathEnvVar, "")
 	if got := config.Path(); got != config.DefaultPath {

@@ -15,8 +15,28 @@ func newFanCmd() *cobra.Command {
 	}
 	cmd.AddCommand(newFanSetCmd("on", "Turn the case fan on"))
 	cmd.AddCommand(newFanSetCmd("off", "Turn the case fan off"))
-	cmd.AddCommand(newFanSetCmd("auto", "Let the case fan follow CPU temperature automatically"))
+	cmd.AddCommand(newFanModeCmd())
 	return cmd
+}
+
+func newFanModeCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "mode <name>",
+		Short: "Set the case fan's temperature curve (always_on, performance, cool, balanced, quiet)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runFanMode(ipc.SocketPath(), args[0])
+		},
+	}
+}
+
+func runFanMode(socketPath, name string) error {
+	if _, err := sendCommand(socketPath, "fan.mode", map[string]any{"name": name}, "fan mode "+name); err != nil {
+		return err
+	}
+
+	fmt.Printf("case fan mode set to %s\n", name)
+	return nil
 }
 
 func newFanSetCmd(use, short string) *cobra.Command {

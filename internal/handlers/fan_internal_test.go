@@ -101,7 +101,7 @@ func TestFanHandlersOffPersistsStateAndCallsRelay(t *testing.T) {
 	}
 }
 
-func TestFanHandlersAutoPersistsStateAndEvaluatesTemperature(t *testing.T) {
+func TestFanHandlersModePersistsStateAndEvaluatesTemperature(t *testing.T) {
 	relay := &fakeRelay{}
 	machine, err := fan.NewMachine(relay, &fakeFanStats{tempC: 70}, fan.ModeOff)
 	if err != nil {
@@ -113,7 +113,7 @@ func TestFanHandlersAutoPersistsStateAndEvaluatesTemperature(t *testing.T) {
 
 	path := startTestDaemon(t, FanHandlers(machine, &cfg, cfgPath, &sync.Mutex{}))
 
-	resp, err := ipc.Send(path, "fan.auto", nil)
+	resp, err := ipc.Send(path, "fan.mode", map[string]any{"name": fan.ModeBalanced})
 	if err != nil {
 		t.Fatalf("Send: %v", err)
 	}
@@ -121,15 +121,39 @@ func TestFanHandlersAutoPersistsStateAndEvaluatesTemperature(t *testing.T) {
 		t.Fatalf("expected ok=true, got error %q", resp.Error)
 	}
 	if relay.onCalls != 1 {
-		t.Fatalf("expected auto mode to energize the relay above the threshold, got %d On() calls", relay.onCalls)
+		t.Fatalf("expected balanced mode to energize the relay above the threshold, got %d On() calls", relay.onCalls)
 	}
 
 	saved, err := config.Load(cfgPath)
 	if err != nil {
 		t.Fatalf("config.Load: %v", err)
 	}
-	if saved.Fan.CaseFanState != fan.ModeAuto {
-		t.Fatalf("expected the saved config to have fan.case_fan_state=auto, got %q", saved.Fan.CaseFanState)
+	if saved.Fan.CaseFanState != fan.ModeBalanced {
+		t.Fatalf("expected the saved config to have fan.case_fan_state=balanced, got %q", saved.Fan.CaseFanState)
+	}
+}
+
+func TestFanHandlersModeRejectsInvalidNameWithoutTouchingRelayOrConfig(t *testing.T) {
+	machine, relay := newTestFanMachine(t, fan.ModeOff)
+	cfg := config.Default()
+	cfg.Fan.CaseFanState = fan.ModeOff
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+
+	path := startTestDaemon(t, FanHandlers(machine, &cfg, cfgPath, &sync.Mutex{}))
+	callsBefore := relay.onCalls + relay.offCalls
+
+	resp, err := ipc.Send(path, "fan.mode", map[string]any{"name": "bogus"})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if resp.OK {
+		t.Fatalf("expected ok=false for an invalid mode name")
+	}
+	if relay.onCalls+relay.offCalls != callsBefore {
+		t.Fatalf("expected the relay to never be touched for an invalid mode name")
+	}
+	if cfg.Fan.CaseFanState != fan.ModeOff {
+		t.Fatalf("expected cfg to remain unchanged for an invalid mode name, got %q", cfg.Fan.CaseFanState)
 	}
 }
 

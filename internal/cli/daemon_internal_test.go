@@ -443,7 +443,7 @@ func TestTickLoopShutdownDoesNotDeadlockWhenServeReturnsWithCtxStillLive(t *test
 		{
 			name: "fan",
 			newTick: func(t *testing.T) func() error {
-				machine, err := fan.NewMachine(fakeFanRelay{}, fakeFanStatsSource{}, fan.ModeAuto)
+				machine, err := fan.NewMachine(fakeFanRelay{}, fakeFanStatsSource{}, fan.ModeBalanced)
 				if err != nil {
 					t.Fatalf("fan.NewMachine: %v", err)
 				}

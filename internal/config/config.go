@@ -61,7 +61,7 @@ func Default() Config {
 			PageOrder:             []string{"mix", "performance", "ips", "disk"},
 		},
 		Fan: Fan{
-			CaseFanState: "auto",
+			CaseFanState: "balanced",
 		},
 	}
 }
@@ -78,6 +78,10 @@ func Load(path string) (Config, error) {
 	cfg := Default()
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return Config{}, fmt.Errorf("parse config %s: %w", path, err)
+	}
+	// Phase 3 persisted "auto" for the fan's only curve; it's now "balanced".
+	if cfg.Fan.CaseFanState == "auto" {
+		cfg.Fan.CaseFanState = "balanced"
 	}
 	return cfg, nil
 }
