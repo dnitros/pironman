@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/dnitros/pironman/internal/config"
+	"github.com/dnitros/pironman/internal/hardware"
 	"github.com/dnitros/pironman/internal/imageconv"
 	"github.com/dnitros/pironman/internal/ipc"
 	"github.com/dnitros/pironman/internal/oled"
@@ -16,10 +17,11 @@ import (
 
 func OLEDHandlers(machine *oled.Machine, cfg *config.Config, cfgPath string, cfgMu *sync.Mutex) map[string]ipc.Handler {
 	return map[string]ipc.Handler{
-		"oled.on":    oledSetHandler(machine, cfg, cfgPath, cfgMu, true),
-		"oled.off":   oledSetHandler(machine, cfg, cfgPath, cfgMu, false),
-		"oled.page":  oledPageHandler(machine, cfg, cfgPath, cfgMu),
-		"oled.image": oledImageHandler(machine, cfg, cfgPath, cfgMu),
+		"oled.on":       oledSetHandler(machine, cfg, cfgPath, cfgMu, true),
+		"oled.off":      oledSetHandler(machine, cfg, cfgPath, cfgMu, false),
+		"oled.page":     oledPageHandler(machine, cfg, cfgPath, cfgMu),
+		"oled.image":    oledImageHandler(machine, cfg, cfgPath, cfgMu),
+		"oled.rotation": oledRotationHandler(machine, cfg, cfgPath, cfgMu),
 	}
 }
 
@@ -143,6 +145,41 @@ func oledImageHandler(machine *oled.Machine, cfg *config.Config, cfgPath string,
 
 		state := machine.State()
 		return map[string]any{"awake": state.Awake, "page": state.Page, "paths": stored}, nil
+	}
+}
+
+func persistOLEDRotation(cfg *config.Config, cfgPath string, degrees int) error {
+	updated := *cfg
+	updated.OLED.Rotation = degrees
+	if err := updated.Save(cfgPath); err != nil {
+		return err
+	}
+	*cfg = updated
+	return nil
+}
+
+func oledRotationHandler(machine *oled.Machine, cfg *config.Config, cfgPath string, opMu *sync.Mutex) ipc.Handler {
+	return func(args map[string]any) (any, error) {
+		v, ok := args["degrees"].(float64)
+		if !ok {
+			return nil, fmt.Errorf("oled.rotation: missing \"degrees\" argument")
+		}
+		degrees := int(v)
+		if err := hardware.ValidateRotation(degrees); err != nil {
+			return nil, err
+		}
+
+		opMu.Lock()
+		defer opMu.Unlock()
+
+		if err := persistOLEDRotation(cfg, cfgPath, degrees); err != nil {
+			return nil, fmt.Errorf("persist OLED rotation: %w", err)
+		}
+		if err := machine.SetRotation(degrees); err != nil {
+			return nil, fmt.Errorf("apply OLED rotation: %w", err)
+		}
+
+		return map[string]any{"rotation": degrees}, nil
 	}
 }
 

@@ -91,10 +91,13 @@ func NewMachine(display hardware.SSD1306Display, stats sysstats.Source, clk cloc
 	return m, nil
 }
 
-func NewConfiguredMachine(enabled bool, pageOrder []string, sleepTimeoutSeconds, scrollIntervalSeconds int, imagePaths []string, imageIntervalSeconds int) (*Machine, error) {
+func NewConfiguredMachine(enabled bool, pageOrder []string, sleepTimeoutSeconds, scrollIntervalSeconds int, imagePaths []string, imageIntervalSeconds int, rotationDegrees int) (*Machine, error) {
 	display, err := hardware.NewI2CSSD1306(hardware.I2CPort)
 	if err != nil {
 		return nil, fmt.Errorf("open SSD1306 display: %w", err)
+	}
+	if err := display.SetRotation(rotationDegrees); err != nil {
+		return nil, fmt.Errorf("apply initial OLED rotation: %w", err)
 	}
 	stats := sysstats.NewProcSource(sysstats.DefaultStatPath, sysstats.DefaultThermalPath, sysstats.DefaultMemInfoPath, sysstats.DefaultMountsPath)
 	m, err := NewMachine(display, stats, clock.RealClock{}, pageOrder,
@@ -177,6 +180,16 @@ func (m *Machine) Previous() error {
 	m.pageIdx = (m.pageIdx - 1 + len(m.pages)) % len(m.pages)
 	m.resetScrollLocked()
 	m.lastActivity = m.clock.Now()
+	return m.renderLocked()
+}
+
+func (m *Machine) SetRotation(degrees int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if err := m.display.SetRotation(degrees); err != nil {
+		return err
+	}
 	return m.renderLocked()
 }
 

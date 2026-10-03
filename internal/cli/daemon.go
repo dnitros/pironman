@@ -328,7 +328,7 @@ func runDaemon(ctx context.Context) error {
 
 	oledMachine, err := oled.NewConfiguredMachine(cfg.OLED.Enabled, cfg.OLED.PageOrder,
 		cfg.OLED.SleepTimeoutSeconds, cfg.OLED.ScrollIntervalSeconds,
-		cfg.OLED.ImagePaths, cfg.OLED.ImageIntervalSeconds)
+		cfg.OLED.ImagePaths, cfg.OLED.ImageIntervalSeconds, cfg.OLED.Rotation)
 	if err != nil {
 		return fmt.Errorf("apply initial OLED state: %w", err)
 	}

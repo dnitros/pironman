@@ -18,10 +18,16 @@ import (
 
 type fakeDisplay struct {
 	drawCalls int
+	rotation  int
 }
 
 func (f *fakeDisplay) Draw(img *image.Gray) error {
 	f.drawCalls++
+	return nil
+}
+
+func (f *fakeDisplay) SetRotation(degrees int) error {
+	f.rotation = degrees
 	return nil
 }
 
@@ -502,5 +508,54 @@ func TestOLEDHandlersImagePersistsDistinctFilesForSameBasenameSources(t *testing
 		if _, err := os.Stat(p); err != nil {
 			t.Fatalf("expected %q to exist: %v", p, err)
 		}
+	}
+}
+
+func TestOLEDHandlersRotationPersistsAndAppliesToDisplay(t *testing.T) {
+	machine, display := newTestMachine(t, true)
+	cfg := config.Default()
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+
+	path := startTestDaemon(t, OLEDHandlers(machine, &cfg, cfgPath, &sync.Mutex{}))
+
+	resp, err := ipc.Send(path, "oled.rotation", map[string]any{"degrees": float64(180)})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if !resp.OK {
+		t.Fatalf("expected ok=true, got error %q", resp.Error)
+	}
+
+	saved, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	if saved.OLED.Rotation != 180 {
+		t.Fatalf("saved.OLED.Rotation = %d, want 180", saved.OLED.Rotation)
+	}
+	if display.rotation != 180 {
+		t.Fatalf("display.rotation = %d, want 180", display.rotation)
+	}
+}
+
+func TestOLEDHandlersRotationRejectsInvalidDegreesWithoutPersisting(t *testing.T) {
+	machine, display := newTestMachine(t, true)
+	cfg := config.Default()
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+
+	path := startTestDaemon(t, OLEDHandlers(machine, &cfg, cfgPath, &sync.Mutex{}))
+
+	resp, err := ipc.Send(path, "oled.rotation", map[string]any{"degrees": float64(90)})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if resp.OK {
+		t.Fatalf("expected ok=false for an unsupported rotation")
+	}
+	if _, err := os.Stat(cfgPath); !os.IsNotExist(err) {
+		t.Fatalf("expected no config file to be written for a rejected rotation, stat err = %v", err)
+	}
+	if display.rotation != 0 {
+		t.Fatalf("display.rotation = %d, want unchanged 0", display.rotation)
 	}
 }

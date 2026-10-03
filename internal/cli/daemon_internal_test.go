@@ -401,8 +401,9 @@ func TestServeDaemonRunsRemainingHooksWhenOneFails(t *testing.T) {
 }
 
 type fakeOLEDDisplay struct {
-	frames [][]byte
-	err    error
+	frames   [][]byte
+	err      error
+	rotation int
 }
 
 func (f *fakeOLEDDisplay) Draw(img *image.Gray) error {
@@ -410,6 +411,11 @@ func (f *fakeOLEDDisplay) Draw(img *image.Gray) error {
 		return f.err
 	}
 	f.frames = append(f.frames, append([]byte(nil), img.Pix...))
+	return nil
+}
+
+func (f *fakeOLEDDisplay) SetRotation(degrees int) error {
+	f.rotation = degrees
 	return nil
 }
 

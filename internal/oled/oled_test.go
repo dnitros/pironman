@@ -34,11 +34,20 @@ func writeTestPBM(t *testing.T, w, h int, lit bool) string {
 var errBoom = errors.New("boom")
 
 type fakeDisplay struct {
-	frames [][]byte
+	frames   [][]byte
+	rotation int
 }
 
 func (f *fakeDisplay) Draw(img *image.Gray) error {
 	f.frames = append(f.frames, append([]byte(nil), img.Pix...))
+	return nil
+}
+
+func (f *fakeDisplay) SetRotation(degrees int) error {
+	if err := hardware.ValidateRotation(degrees); err != nil {
+		return err
+	}
+	f.rotation = degrees
 	return nil
 }
 
@@ -869,5 +878,43 @@ func TestTickDoesNotAdvanceImageWhileOnAnotherPage(t *testing.T) {
 	}
 	if !bytes.Equal(display.lastFrame(), initial) {
 		t.Fatalf("expected switching onto the image page via SetPage to reset the rotation timer")
+	}
+}
+
+func TestSetRotationAppliesToDisplayAndRerenders(t *testing.T) {
+	display := &fakeDisplay{}
+	m, err := oled.NewMachine(display, &fakeStats{}, newFakeClock(), defaultPages(), 10*time.Second, 3*time.Second, true)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+	framesBefore := len(display.frames)
+
+	if err := m.SetRotation(180); err != nil {
+		t.Fatalf("SetRotation: %v", err)
+	}
+	if display.rotation != 180 {
+		t.Fatalf("display.rotation = %d, want 180", display.rotation)
+	}
+	if len(display.frames) <= framesBefore {
+		t.Fatalf("expected SetRotation to redraw the display")
+	}
+}
+
+func TestSetRotationRejectsUnsupportedDegreesWithoutRerendering(t *testing.T) {
+	display := &fakeDisplay{}
+	m, err := oled.NewMachine(display, &fakeStats{}, newFakeClock(), defaultPages(), 10*time.Second, 3*time.Second, true)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+	framesBefore := len(display.frames)
+
+	if err := m.SetRotation(90); err == nil {
+		t.Fatalf("SetRotation(90) = nil, want an error")
+	}
+	if display.rotation != 0 {
+		t.Fatalf("display.rotation = %d, want unchanged 0", display.rotation)
+	}
+	if len(display.frames) != framesBefore {
+		t.Fatalf("expected a rejected rotation not to redraw the display")
 	}
 }

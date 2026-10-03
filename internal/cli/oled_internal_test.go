@@ -202,3 +202,43 @@ func TestRunOLEDImagePropagatesHandlerError(t *testing.T) {
 		t.Fatalf("expected error to include the handler's message, got: %v", err)
 	}
 }
+
+func TestRunOLEDRotationRoundTrip(t *testing.T) {
+	path := startTestDaemon(t, map[string]ipc.Handler{
+		"oled.rotation": func(args map[string]any) (any, error) {
+			return map[string]any{"rotation": args["degrees"]}, nil
+		},
+	})
+
+	if err := runOLEDRotation(path, 180); err != nil {
+		t.Fatalf("runOLEDRotation: %v", err)
+	}
+}
+
+func TestRunOLEDRotationFailsClearlyWhenDaemonUnreachable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "no-such-daemon.sock")
+
+	err := runOLEDRotation(path, 180)
+	if err == nil {
+		t.Fatalf("expected an error when the daemon is unreachable")
+	}
+	if !strings.Contains(err.Error(), "unreachable") {
+		t.Fatalf("expected error to say the daemon is unreachable, got: %v", err)
+	}
+}
+
+func TestRunOLEDRotationPropagatesHandlerError(t *testing.T) {
+	path := startTestDaemon(t, map[string]ipc.Handler{
+		"oled.rotation": func(args map[string]any) (any, error) {
+			return nil, errBoom
+		},
+	})
+
+	err := runOLEDRotation(path, 180)
+	if err == nil {
+		t.Fatalf("expected an error when the handler fails")
+	}
+	if !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("expected error to include the handler's message, got: %v", err)
+	}
+}
