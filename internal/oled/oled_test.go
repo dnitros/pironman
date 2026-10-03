@@ -430,6 +430,30 @@ func TestSetSleepTimeoutAppliesNewDurationOnNextTick(t *testing.T) {
 	}
 }
 
+func TestSetSleepTimeoutDoesNotBlankImmediatelyAfterLongDisabledPeriod(t *testing.T) {
+	display := &fakeDisplay{}
+	clock := newFakeClock()
+	m, err := oled.NewMachine(display, &fakeStats{}, clock, defaultPages(), 10*time.Second, 3*time.Second, true)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+
+	if err := m.SetSleepTimeout(0); err != nil {
+		t.Fatalf("SetSleepTimeout(0): %v", err)
+	}
+	clock.Advance(24 * time.Hour)
+
+	if err := m.SetSleepTimeout(10); err != nil {
+		t.Fatalf("SetSleepTimeout(10): %v", err)
+	}
+	if err := m.Tick(); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+	if !m.State().Awake {
+		t.Fatalf("expected re-enabling the sleep-timeout to start counting from now, not from stale inactivity accrued while it was disabled")
+	}
+}
+
 func TestSetSleepTimeoutRejectsOutOfRangeValues(t *testing.T) {
 	display := &fakeDisplay{}
 	m, err := oled.NewMachine(display, &fakeStats{}, newFakeClock(), defaultPages(), 10*time.Second, 3*time.Second, true)

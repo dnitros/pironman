@@ -199,6 +199,7 @@ func (m *Machine) SetSleepTimeout(seconds int) error {
 	defer m.mu.Unlock()
 
 	m.sleepTimeout = time.Duration(seconds) * time.Second
+	m.lastActivity = m.clock.Now()
 	return nil
 }
 
