@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -16,6 +17,7 @@ func newOLEDCmd() *cobra.Command {
 	cmd.AddCommand(newOLEDSetCmd("on", "Wake the display and show the mix page"))
 	cmd.AddCommand(newOLEDSetCmd("off", "Blank the display"))
 	cmd.AddCommand(newOLEDPageCmd())
+	cmd.AddCommand(newOLEDImageCmd())
 	return cmd
 }
 
@@ -55,5 +57,44 @@ func runOLEDPage(socketPath, page string) error {
 	}
 
 	fmt.Printf("OLED page set to %s\n", page)
+	return nil
+}
+
+func newOLEDImageCmd() *cobra.Command {
+	var interval int
+	var invert bool
+	cmd := &cobra.Command{
+		Use:   "image [--interval seconds] [--invert] <path>...",
+		Short: "Convert, persist, and show one or more images on the OLED image page",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runOLEDImage(ipc.SocketPath(), args, interval, invert)
+		},
+	}
+	cmd.Flags().IntVar(&interval, "interval", 0, "seconds between images when rotating multiple paths (default: 5s)")
+	cmd.Flags().BoolVar(&invert, "invert", false, "invert which pixels are lit")
+	return cmd
+}
+
+func runOLEDImage(socketPath string, paths []string, interval int, invert bool) error {
+	anyPaths := make([]any, len(paths))
+	for i, p := range paths {
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			return fmt.Errorf("oled image: resolve %q: %w", p, err)
+		}
+		anyPaths[i] = abs
+	}
+
+	args := map[string]any{"paths": anyPaths, "invert": invert}
+	if interval > 0 {
+		args["interval"] = interval
+	}
+
+	if _, err := sendCommand(socketPath, "oled.image", args, "oled image"); err != nil {
+		return err
+	}
+
+	fmt.Printf("OLED image page set (%d path(s))\n", len(paths))
 	return nil
 }

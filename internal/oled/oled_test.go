@@ -4,12 +4,32 @@ import (
 	"bytes"
 	"errors"
 	"image"
+	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/dnitros/pironman/internal/hardware"
 	"github.com/dnitros/pironman/internal/oled"
+	"github.com/dnitros/pironman/internal/pbm"
 	"github.com/dnitros/pironman/internal/sysstats"
 )
+
+func writeTestPBM(t *testing.T, w, h int, lit bool) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "img.pbm")
+	img := image.NewGray(image.Rect(0, 0, w, h))
+	fill := uint8(0)
+	if lit {
+		fill = 255
+	}
+	for i := range img.Pix {
+		img.Pix[i] = fill
+	}
+	if err := pbm.EncodeFile(path, img); err != nil {
+		t.Fatalf("pbm.EncodeFile: %v", err)
+	}
+	return path
+}
 
 var errBoom = errors.New("boom")
 
@@ -652,4 +672,202 @@ func TestTickPropagatesStatsError(t *testing.T) {
 		t.Fatalf("expected NewMachine to propagate the initial render error")
 	}
 	_ = m
+}
+
+func TestSetPageImageRendersConfiguredImage(t *testing.T) {
+	display := &fakeDisplay{}
+	m, err := oled.NewMachine(display, &fakeStats{}, newFakeClock(), []string{oled.PageMix, oled.PageImage}, 10*time.Second, 3*time.Second, true)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+	path := writeTestPBM(t, hardware.SSD1306Width, hardware.SSD1306Height, true)
+	if err := m.SetImages([]string{path}, 5*time.Second); err != nil {
+		t.Fatalf("SetImages: %v", err)
+	}
+
+	if err := m.SetPage(oled.PageImage); err != nil {
+		t.Fatalf("SetPage: %v", err)
+	}
+	if allZero(display.lastFrame()) {
+		t.Fatalf("expected a non-blank frame for the configured image")
+	}
+}
+
+func TestSetImagesReRendersImmediatelyWhenAlreadyOnImagePage(t *testing.T) {
+	display := &fakeDisplay{}
+	m, err := oled.NewMachine(display, &fakeStats{}, newFakeClock(), []string{oled.PageMix, oled.PageImage}, 10*time.Second, 3*time.Second, true)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+	if err := m.SetPage(oled.PageImage); err != nil {
+		t.Fatalf("SetPage: %v", err)
+	}
+	framesBefore := len(display.frames)
+
+	path := writeTestPBM(t, hardware.SSD1306Width, hardware.SSD1306Height, true)
+	if err := m.SetImages([]string{path}, 5*time.Second); err != nil {
+		t.Fatalf("SetImages: %v", err)
+	}
+	if len(display.frames) != framesBefore+1 {
+		t.Fatalf("expected SetImages to re-render once while already on the image page, got %d new draw(s)", len(display.frames)-framesBefore)
+	}
+}
+
+func TestSetImagesDoesNotRenderWhenNotOnImagePage(t *testing.T) {
+	display := &fakeDisplay{}
+	m, err := oled.NewMachine(display, &fakeStats{}, newFakeClock(), []string{oled.PageMix, oled.PageImage}, 10*time.Second, 3*time.Second, true)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+	framesBefore := len(display.frames)
+
+	path := writeTestPBM(t, hardware.SSD1306Width, hardware.SSD1306Height, true)
+	if err := m.SetImages([]string{path}, 5*time.Second); err != nil {
+		t.Fatalf("SetImages: %v", err)
+	}
+	if len(display.frames) != framesBefore {
+		t.Fatalf("expected SetImages to draw nothing while on another page")
+	}
+}
+
+func TestSingleConfiguredImageNeverAdvances(t *testing.T) {
+	display := &fakeDisplay{}
+	clock := newFakeClock()
+	m, err := oled.NewMachine(display, &fakeStats{}, clock, []string{oled.PageMix, oled.PageImage}, time.Hour, 3*time.Second, true)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+	path := writeTestPBM(t, hardware.SSD1306Width, hardware.SSD1306Height, true)
+	if err := m.SetImages([]string{path}, 5*time.Second); err != nil {
+		t.Fatalf("SetImages: %v", err)
+	}
+	if err := m.SetPage(oled.PageImage); err != nil {
+		t.Fatalf("SetPage: %v", err)
+	}
+	initial := display.lastFrame()
+
+	clock.Advance(10 * time.Minute)
+	if err := m.Tick(); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+	if !bytes.Equal(display.lastFrame(), initial) {
+		t.Fatalf("expected a single configured image to never change, even well past the interval")
+	}
+}
+
+func TestTwoConfiguredImagesRotateOnlyAfterInterval(t *testing.T) {
+	display := &fakeDisplay{}
+	clock := newFakeClock()
+	m, err := oled.NewMachine(display, &fakeStats{}, clock, []string{oled.PageMix, oled.PageImage}, 10*time.Second, 3*time.Second, true)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+	pathA := writeTestPBM(t, hardware.SSD1306Width, hardware.SSD1306Height, true)
+	pathB := writeTestPBM(t, hardware.SSD1306Width, hardware.SSD1306Height, false)
+	if err := m.SetImages([]string{pathA, pathB}, 5*time.Second); err != nil {
+		t.Fatalf("SetImages: %v", err)
+	}
+	if err := m.SetPage(oled.PageImage); err != nil {
+		t.Fatalf("SetPage: %v", err)
+	}
+	initial := display.lastFrame()
+
+	clock.Advance(4 * time.Second)
+	if err := m.Tick(); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+	if !bytes.Equal(display.lastFrame(), initial) {
+		t.Fatalf("expected no rotation before the configured interval elapses")
+	}
+
+	clock.Advance(2 * time.Second)
+	if err := m.Tick(); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+	if bytes.Equal(display.lastFrame(), initial) {
+		t.Fatalf("expected rotation to the next image once the interval elapses")
+	}
+}
+
+func TestImagePageFallsBackToTextWhenNoImagesConfigured(t *testing.T) {
+	display := &fakeDisplay{}
+	m, err := oled.NewMachine(display, &fakeStats{}, newFakeClock(), []string{oled.PageMix, oled.PageImage}, 10*time.Second, 3*time.Second, true)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+
+	if err := m.SetPage(oled.PageImage); err != nil {
+		t.Fatalf("SetPage: %v", err)
+	}
+	if allZero(display.lastFrame()) {
+		t.Fatalf("expected a non-blank fallback frame when no images are configured")
+	}
+}
+
+func TestImagePageFallsBackToTextForUnreadablePath(t *testing.T) {
+	display := &fakeDisplay{}
+	m, err := oled.NewMachine(display, &fakeStats{}, newFakeClock(), []string{oled.PageMix, oled.PageImage}, 10*time.Second, 3*time.Second, true)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+	if err := m.SetImages([]string{filepath.Join(t.TempDir(), "missing.pbm")}, 5*time.Second); err != nil {
+		t.Fatalf("SetImages: %v", err)
+	}
+
+	if err := m.SetPage(oled.PageImage); err != nil {
+		t.Fatalf("SetPage: %v", err)
+	}
+	if allZero(display.lastFrame()) {
+		t.Fatalf("expected a non-blank fallback frame for an unreadable image path")
+	}
+}
+
+func TestImagePageFallsBackToTextForWrongSizedPBM(t *testing.T) {
+	display := &fakeDisplay{}
+	m, err := oled.NewMachine(display, &fakeStats{}, newFakeClock(), []string{oled.PageMix, oled.PageImage}, 10*time.Second, 3*time.Second, true)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+	path := writeTestPBM(t, 32, 32, true)
+	if err := m.SetImages([]string{path}, 5*time.Second); err != nil {
+		t.Fatalf("SetImages: %v", err)
+	}
+
+	if err := m.SetPage(oled.PageImage); err != nil {
+		t.Fatalf("SetPage: %v", err)
+	}
+	if allZero(display.lastFrame()) {
+		t.Fatalf("expected a non-blank fallback frame for a wrong-sized .pbm")
+	}
+}
+
+func TestTickDoesNotAdvanceImageWhileOnAnotherPage(t *testing.T) {
+	display := &fakeDisplay{}
+	clock := newFakeClock()
+	m, err := oled.NewMachine(display, &fakeStats{}, clock, []string{oled.PageMix, oled.PageImage}, 10*time.Second, 3*time.Second, true)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+	pathA := writeTestPBM(t, hardware.SSD1306Width, hardware.SSD1306Height, true)
+	pathB := writeTestPBM(t, hardware.SSD1306Width, hardware.SSD1306Height, false)
+	if err := m.SetImages([]string{pathA, pathB}, 1*time.Second); err != nil {
+		t.Fatalf("SetImages: %v", err)
+	}
+
+	clock.Advance(time.Hour)
+	if err := m.Tick(); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+	if err := m.SetPage(oled.PageImage); err != nil {
+		t.Fatalf("SetPage: %v", err)
+	}
+	initial := display.lastFrame()
+
+	clock.Advance(500 * time.Millisecond)
+	if err := m.Tick(); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+	if !bytes.Equal(display.lastFrame(), initial) {
+		t.Fatalf("expected switching onto the image page via SetPage to reset the rotation timer")
+	}
 }

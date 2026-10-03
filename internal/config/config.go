@@ -39,6 +39,8 @@ type OLED struct {
 	SleepTimeoutSeconds   int      `yaml:"sleep_timeout_seconds"`
 	ScrollIntervalSeconds int      `yaml:"scroll_interval_seconds"`
 	PageOrder             []string `yaml:"page_order"`
+	ImagePaths            []string `yaml:"image_paths,omitempty"`
+	ImageIntervalSeconds  int      `yaml:"image_interval_seconds"`
 }
 
 type Fan struct {
@@ -59,6 +61,7 @@ func Default() Config {
 			SleepTimeoutSeconds:   10,
 			ScrollIntervalSeconds: 3,
 			PageOrder:             []string{"mix", "performance", "ips", "disk"},
+			ImageIntervalSeconds:  5,
 		},
 		Fan: Fan{
 			CaseFanState: "balanced",

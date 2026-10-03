@@ -5,7 +5,7 @@ A CLI + daemon tool controlling a Pironman 5 case (base edition) on a Raspberry 
 ## Language
 
 **OLED page**:
-One of the fixed full-screen contents the OLED display can show: `mix`, `performance`, `ips`, `disk`.
+One of the fixed full-screen contents the OLED display can show: `mix`, `performance`, `ips`, `disk`, `image`.
 _Avoid_: screen, view
 
 **Page advance**:
@@ -13,7 +13,7 @@ Switching the OLED from one page to another. Triggered only by a power-button pr
 _Avoid_: auto-cycle, page rotation
 
 **Content scroll**:
-Cycling automatically, on a fixed timer, through multiple values displayed *within* a single page (e.g. several IP addresses on the `ips` page, or several disks on the `disk` page). Distinct from page advance: a page's content scrolls on its own while the page itself only changes on a button press.
+Cycling automatically, on a fixed timer, through multiple values displayed *within* a single page (e.g. several IP addresses on the `ips` page, several disks on the `disk` page, or several configured images on the `image` page). Distinct from page advance: a page's content scrolls on its own while the page itself only changes on a button press.
 _Avoid_: auto-cycle, page rotation
 
 **Press event**:
