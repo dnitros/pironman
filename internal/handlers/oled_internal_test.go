@@ -559,3 +559,46 @@ func TestOLEDHandlersRotationRejectsInvalidDegreesWithoutPersisting(t *testing.T
 		t.Fatalf("display.rotation = %d, want unchanged 0", display.rotation)
 	}
 }
+
+func TestOLEDHandlersSleepTimeoutPersistsAndApplies(t *testing.T) {
+	machine, _ := newTestMachine(t, true)
+	cfg := config.Default()
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+
+	path := startTestDaemon(t, OLEDHandlers(machine, &cfg, cfgPath, &sync.Mutex{}))
+
+	resp, err := ipc.Send(path, "oled.sleep-timeout", map[string]any{"seconds": float64(30)})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if !resp.OK {
+		t.Fatalf("expected ok=true, got error %q", resp.Error)
+	}
+
+	saved, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	if saved.OLED.SleepTimeoutSeconds != 30 {
+		t.Fatalf("saved.OLED.SleepTimeoutSeconds = %d, want 30", saved.OLED.SleepTimeoutSeconds)
+	}
+}
+
+func TestOLEDHandlersSleepTimeoutRejectsOutOfRangeWithoutPersisting(t *testing.T) {
+	machine, _ := newTestMachine(t, true)
+	cfg := config.Default()
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
+
+	path := startTestDaemon(t, OLEDHandlers(machine, &cfg, cfgPath, &sync.Mutex{}))
+
+	resp, err := ipc.Send(path, "oled.sleep-timeout", map[string]any{"seconds": float64(3601)})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if resp.OK {
+		t.Fatalf("expected ok=false for an out-of-range sleep-timeout")
+	}
+	if _, err := os.Stat(cfgPath); !os.IsNotExist(err) {
+		t.Fatalf("expected no config file to be written for a rejected sleep-timeout, stat err = %v", err)
+	}
+}

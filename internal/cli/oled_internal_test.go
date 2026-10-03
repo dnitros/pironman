@@ -242,3 +242,43 @@ func TestRunOLEDRotationPropagatesHandlerError(t *testing.T) {
 		t.Fatalf("expected error to include the handler's message, got: %v", err)
 	}
 }
+
+func TestRunOLEDSleepTimeoutRoundTrip(t *testing.T) {
+	path := startTestDaemon(t, map[string]ipc.Handler{
+		"oled.sleep-timeout": func(args map[string]any) (any, error) {
+			return map[string]any{"sleep_timeout_seconds": args["seconds"]}, nil
+		},
+	})
+
+	if err := runOLEDSleepTimeout(path, 30); err != nil {
+		t.Fatalf("runOLEDSleepTimeout: %v", err)
+	}
+}
+
+func TestRunOLEDSleepTimeoutFailsClearlyWhenDaemonUnreachable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "no-such-daemon.sock")
+
+	err := runOLEDSleepTimeout(path, 30)
+	if err == nil {
+		t.Fatalf("expected an error when the daemon is unreachable")
+	}
+	if !strings.Contains(err.Error(), "unreachable") {
+		t.Fatalf("expected error to say the daemon is unreachable, got: %v", err)
+	}
+}
+
+func TestRunOLEDSleepTimeoutPropagatesHandlerError(t *testing.T) {
+	path := startTestDaemon(t, map[string]ipc.Handler{
+		"oled.sleep-timeout": func(args map[string]any) (any, error) {
+			return nil, errBoom
+		},
+	})
+
+	err := runOLEDSleepTimeout(path, 30)
+	if err == nil {
+		t.Fatalf("expected an error when the handler fails")
+	}
+	if !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("expected error to include the handler's message, got: %v", err)
+	}
+}

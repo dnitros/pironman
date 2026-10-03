@@ -20,6 +20,7 @@ func newOLEDCmd() *cobra.Command {
 	cmd.AddCommand(newOLEDPageCmd())
 	cmd.AddCommand(newOLEDImageCmd())
 	cmd.AddCommand(newOLEDRotationCmd())
+	cmd.AddCommand(newOLEDSleepTimeoutCmd())
 	return cmd
 }
 
@@ -122,5 +123,29 @@ func runOLEDRotation(socketPath string, degrees int) error {
 	}
 
 	fmt.Printf("OLED rotation set to %d\n", degrees)
+	return nil
+}
+
+func newOLEDSleepTimeoutCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "sleep-timeout <seconds>",
+		Short: "Set how long the display stays awake with no activity (0 disables)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			seconds, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("oled sleep-timeout: %q is not a valid integer", args[0])
+			}
+			return runOLEDSleepTimeout(ipc.SocketPath(), seconds)
+		},
+	}
+}
+
+func runOLEDSleepTimeout(socketPath string, seconds int) error {
+	if _, err := sendCommand(socketPath, "oled.sleep-timeout", map[string]any{"seconds": seconds}, "oled sleep-timeout"); err != nil {
+		return err
+	}
+
+	fmt.Printf("OLED sleep-timeout set to %d seconds\n", seconds)
 	return nil
 }
