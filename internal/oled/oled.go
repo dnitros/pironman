@@ -183,6 +183,26 @@ func (m *Machine) Previous() error {
 	return m.renderLocked()
 }
 
+func ValidateSleepTimeoutSeconds(seconds int) error {
+	if seconds < 0 || seconds > 3600 {
+		return fmt.Errorf("invalid OLED sleep-timeout %d: want 0-3600", seconds)
+	}
+	return nil
+}
+
+func (m *Machine) SetSleepTimeout(seconds int) error {
+	if err := ValidateSleepTimeoutSeconds(seconds); err != nil {
+		return err
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.sleepTimeout = time.Duration(seconds) * time.Second
+	m.lastActivity = m.clock.Now()
+	return nil
+}
+
 func (m *Machine) SetRotation(degrees int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -239,7 +259,7 @@ func (m *Machine) Tick() error {
 	}
 
 	now := m.clock.Now()
-	if now.Sub(m.lastActivity) >= m.sleepTimeout {
+	if m.sleepTimeout > 0 && now.Sub(m.lastActivity) >= m.sleepTimeout {
 		m.awake = false
 		return m.renderLocked()
 	}

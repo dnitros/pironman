@@ -17,11 +17,12 @@ import (
 
 func OLEDHandlers(machine *oled.Machine, cfg *config.Config, cfgPath string, cfgMu *sync.Mutex) map[string]ipc.Handler {
 	return map[string]ipc.Handler{
-		"oled.on":       oledSetHandler(machine, cfg, cfgPath, cfgMu, true),
-		"oled.off":      oledSetHandler(machine, cfg, cfgPath, cfgMu, false),
-		"oled.page":     oledPageHandler(machine, cfg, cfgPath, cfgMu),
-		"oled.image":    oledImageHandler(machine, cfg, cfgPath, cfgMu),
-		"oled.rotation": oledRotationHandler(machine, cfg, cfgPath, cfgMu),
+		"oled.on":            oledSetHandler(machine, cfg, cfgPath, cfgMu, true),
+		"oled.off":           oledSetHandler(machine, cfg, cfgPath, cfgMu, false),
+		"oled.page":          oledPageHandler(machine, cfg, cfgPath, cfgMu),
+		"oled.image":         oledImageHandler(machine, cfg, cfgPath, cfgMu),
+		"oled.rotation":      oledRotationHandler(machine, cfg, cfgPath, cfgMu),
+		"oled.sleep-timeout": oledSleepTimeoutHandler(machine, cfg, cfgPath, cfgMu),
 	}
 }
 
@@ -180,6 +181,41 @@ func oledRotationHandler(machine *oled.Machine, cfg *config.Config, cfgPath stri
 		}
 
 		return map[string]any{"rotation": degrees}, nil
+	}
+}
+
+func persistOLEDSleepTimeout(cfg *config.Config, cfgPath string, seconds int) error {
+	updated := *cfg
+	updated.OLED.SleepTimeoutSeconds = seconds
+	if err := updated.Save(cfgPath); err != nil {
+		return err
+	}
+	*cfg = updated
+	return nil
+}
+
+func oledSleepTimeoutHandler(machine *oled.Machine, cfg *config.Config, cfgPath string, opMu *sync.Mutex) ipc.Handler {
+	return func(args map[string]any) (any, error) {
+		v, ok := args["seconds"].(float64)
+		if !ok {
+			return nil, fmt.Errorf("oled.sleep-timeout: missing \"seconds\" argument")
+		}
+		seconds := int(v)
+		if err := oled.ValidateSleepTimeoutSeconds(seconds); err != nil {
+			return nil, err
+		}
+
+		opMu.Lock()
+		defer opMu.Unlock()
+
+		if err := persistOLEDSleepTimeout(cfg, cfgPath, seconds); err != nil {
+			return nil, fmt.Errorf("persist OLED sleep-timeout: %w", err)
+		}
+		if err := machine.SetSleepTimeout(seconds); err != nil {
+			return nil, fmt.Errorf("apply OLED sleep-timeout: %w", err)
+		}
+
+		return map[string]any{"sleep_timeout_seconds": seconds}, nil
 	}
 }
 

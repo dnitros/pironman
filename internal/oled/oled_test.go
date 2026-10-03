@@ -388,6 +388,86 @@ func TestActivityResetsSleepTimeoutWindow(t *testing.T) {
 	}
 }
 
+func TestSetSleepTimeoutZeroDisablesBlanking(t *testing.T) {
+	display := &fakeDisplay{}
+	clock := newFakeClock()
+	m, err := oled.NewMachine(display, &fakeStats{}, clock, defaultPages(), 10*time.Second, 3*time.Second, true)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+
+	if err := m.SetSleepTimeout(0); err != nil {
+		t.Fatalf("SetSleepTimeout(0): %v", err)
+	}
+
+	clock.Advance(24 * time.Hour)
+	if err := m.Tick(); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+	if !m.State().Awake {
+		t.Fatalf("expected a 0 sleep-timeout to disable automatic blanking")
+	}
+}
+
+func TestSetSleepTimeoutAppliesNewDurationOnNextTick(t *testing.T) {
+	display := &fakeDisplay{}
+	clock := newFakeClock()
+	m, err := oled.NewMachine(display, &fakeStats{}, clock, defaultPages(), 10*time.Second, 3*time.Second, true)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+
+	if err := m.SetSleepTimeout(2); err != nil {
+		t.Fatalf("SetSleepTimeout(2): %v", err)
+	}
+
+	clock.Advance(2 * time.Second)
+	if err := m.Tick(); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+	if m.State().Awake {
+		t.Fatalf("expected the new shorter sleep-timeout to take effect")
+	}
+}
+
+func TestSetSleepTimeoutDoesNotBlankImmediatelyAfterLongDisabledPeriod(t *testing.T) {
+	display := &fakeDisplay{}
+	clock := newFakeClock()
+	m, err := oled.NewMachine(display, &fakeStats{}, clock, defaultPages(), 10*time.Second, 3*time.Second, true)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+
+	if err := m.SetSleepTimeout(0); err != nil {
+		t.Fatalf("SetSleepTimeout(0): %v", err)
+	}
+	clock.Advance(24 * time.Hour)
+
+	if err := m.SetSleepTimeout(10); err != nil {
+		t.Fatalf("SetSleepTimeout(10): %v", err)
+	}
+	if err := m.Tick(); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+	if !m.State().Awake {
+		t.Fatalf("expected re-enabling the sleep-timeout to start counting from now, not from stale inactivity accrued while it was disabled")
+	}
+}
+
+func TestSetSleepTimeoutRejectsOutOfRangeValues(t *testing.T) {
+	display := &fakeDisplay{}
+	m, err := oled.NewMachine(display, &fakeStats{}, newFakeClock(), defaultPages(), 10*time.Second, 3*time.Second, true)
+	if err != nil {
+		t.Fatalf("NewMachine: %v", err)
+	}
+
+	for _, seconds := range []int{-1, 3601} {
+		if err := m.SetSleepTimeout(seconds); err == nil {
+			t.Fatalf("SetSleepTimeout(%d) = nil, want an error", seconds)
+		}
+	}
+}
+
 func TestTickScrollsMixPageContentOnlyAfterScrollInterval(t *testing.T) {
 	display := &fakeDisplay{}
 	stats := &fakeStats{snap: sysstats.Snapshot{Interfaces: map[string]string{
