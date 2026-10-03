@@ -10,11 +10,15 @@ _Avoid_: screen, view
 
 **Page advance**:
 Switching the OLED from one page to another. Triggered only by a power-button press (short press = next, double press = previous) — never by a timer.
-_Avoid_: auto-cycle, page rotation
+_Avoid_: auto-cycle, page rotation (see OLED rotation for the actual meaning of "rotation" in this codebase)
 
 **Content scroll**:
 Cycling automatically, on a fixed timer, through multiple values displayed *within* a single page (e.g. several IP addresses on the `ips` page, several disks on the `disk` page, or several configured images on the `image` page). Distinct from page advance: a page's content scrolls on its own while the page itself only changes on a button press.
-_Avoid_: auto-cycle, page rotation
+_Avoid_: auto-cycle, page rotation (see OLED rotation for the actual meaning of "rotation" in this codebase)
+
+**OLED rotation**:
+The physical orientation of the OLED's rendered output — `0` (normal) or `180` (upside down) — set via `pironman oled rotation 0|180` and persisted as `config.OLED.Rotation`. Unrelated to page advance or content scroll: it flips every page's pixels, not which page or content is shown.
+_Avoid_: page rotation (see Page advance, Content scroll)
 
 **Press event**:
 One of four classified power-button interactions, each mapped to a fixed action: `click` (OLED wake/page-advance-next), `double-click` (page-advance-previous), `long-press` (show shutdown-confirmation screen), `long-press-released` (show powering-off screen, then shutdown).

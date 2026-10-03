@@ -23,6 +23,14 @@ const grayLitThreshold = 128
 
 type SSD1306Display interface {
 	Draw(img *image.Gray) error
+	SetRotation(degrees int) error
+}
+
+func ValidateRotation(degrees int) error {
+	if degrees != 0 && degrees != 180 {
+		return fmt.Errorf("invalid OLED rotation %d: want 0 or 180", degrees)
+	}
+	return nil
 }
 
 // ssd1306InitCommands is the SSD1306's documented power-on init sequence.
@@ -51,7 +59,8 @@ var ssd1306AddressRange = []byte{
 }
 
 type I2CSSD1306 struct {
-	dev *i2c.Dev
+	dev      *i2c.Dev
+	rotation int
 }
 
 func NewI2CSSD1306(port string) (*I2CSSD1306, error) {
@@ -80,6 +89,14 @@ func (d *I2CSSD1306) writeCommands(cmds []byte) error {
 	return nil
 }
 
+func (d *I2CSSD1306) SetRotation(degrees int) error {
+	if err := ValidateRotation(degrees); err != nil {
+		return err
+	}
+	d.rotation = degrees
+	return nil
+}
+
 func (d *I2CSSD1306) Draw(img *image.Gray) error {
 	b := img.Bounds()
 	if b.Dx() != SSD1306Width || b.Dy() != SSD1306Height {
@@ -90,7 +107,7 @@ func (d *I2CSSD1306) Draw(img *image.Gray) error {
 		return err
 	}
 
-	frame := packSSD1306Frame(img)
+	frame := packSSD1306Frame(img, d.rotation)
 	buf := make([]byte, 0, len(frame)+1)
 	buf = append(buf, 0x40)
 	buf = append(buf, frame...)
@@ -100,12 +117,18 @@ func (d *I2CSSD1306) Draw(img *image.Gray) error {
 	return nil
 }
 
-func packSSD1306Frame(img *image.Gray) []byte {
+// packSSD1306Frame builds the page buffer in software; a 180° rotation reads
+// each pixel from its opposite corner.
+func packSSD1306Frame(img *image.Gray, rotationDegrees int) []byte {
 	frame := make([]byte, SSD1306Width*ssd1306Pages)
 	b := img.Bounds()
 	for y := 0; y < SSD1306Height; y++ {
 		for x := 0; x < SSD1306Width; x++ {
-			if img.GrayAt(b.Min.X+x, b.Min.Y+y).Y < grayLitThreshold {
+			sx, sy := x, y
+			if rotationDegrees == 180 {
+				sx, sy = SSD1306Width-1-x, SSD1306Height-1-y
+			}
+			if img.GrayAt(b.Min.X+sx, b.Min.Y+sy).Y < grayLitThreshold {
 				continue
 			}
 			page := y / 8

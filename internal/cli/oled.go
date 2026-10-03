@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"path/filepath"
+	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -18,6 +19,7 @@ func newOLEDCmd() *cobra.Command {
 	cmd.AddCommand(newOLEDSetCmd("off", "Blank the display"))
 	cmd.AddCommand(newOLEDPageCmd())
 	cmd.AddCommand(newOLEDImageCmd())
+	cmd.AddCommand(newOLEDRotationCmd())
 	return cmd
 }
 
@@ -96,5 +98,29 @@ func runOLEDImage(socketPath string, paths []string, interval int, invert bool) 
 	}
 
 	fmt.Printf("OLED image page set (%d path(s))\n", len(paths))
+	return nil
+}
+
+func newOLEDRotationCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "rotation <0|180>",
+		Short: "Rotate the OLED display 0 or 180 degrees",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			degrees, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("oled rotation: %q is not a valid integer", args[0])
+			}
+			return runOLEDRotation(ipc.SocketPath(), degrees)
+		},
+	}
+}
+
+func runOLEDRotation(socketPath string, degrees int) error {
+	if _, err := sendCommand(socketPath, "oled.rotation", map[string]any{"degrees": degrees}, "oled rotation"); err != nil {
+		return err
+	}
+
+	fmt.Printf("OLED rotation set to %d\n", degrees)
 	return nil
 }

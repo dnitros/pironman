@@ -41,6 +41,7 @@ type OLED struct {
 	PageOrder             []string `yaml:"page_order"`
 	ImagePaths            []string `yaml:"image_paths,omitempty"`
 	ImageIntervalSeconds  int      `yaml:"image_interval_seconds"`
+	Rotation              int      `yaml:"rotation"`
 }
 
 type Fan struct {

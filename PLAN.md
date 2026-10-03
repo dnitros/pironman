@@ -81,6 +81,9 @@ oled:
   sleep_timeout_seconds: 10
   scroll_interval_seconds: 3
   page_order: [mix, performance, ips, disk]
+  image_paths: []           # populated by `oled image`; adds the `image` page (PER-49, shipped)
+  image_interval_seconds: 5 # (PER-49, shipped)
+  rotation: 0               # 0 | 180 (PER-50, shipped)
 
 fan:
   case_fan_state: balanced  # always_on | performance | cool | balanced | quiet
@@ -129,7 +132,7 @@ Each curve's on/off threshold pair (always_on/performance/cool/balanced/quiet) i
 **v2+ (unchanged from the brief, refined where this plan's findings apply):**
 - Phase 5 — RGB effects (breathing/flow/flow_reverse/rainbow/rainbow_reverse/hue_cycle, `--speed`).
 - Phase 6 — Case-fan modes (shipped, PER-47): `always_on`/`performance`/`cool`/`balanced`/`quiet`, at always-on/50/60/67.5/75°C on and 45/55/62.5/70°C off (correcting the brief's guessed 70°C for `quiet`'s *on* threshold to the original's actual 75°C — 70°C is `quiet`'s *off* threshold), each a fixed 5°C hysteresis band. Reuses `case_fan_state` for the curve name — no second config field or custom threshold was added. Manual `fan on`/`fan off` were removed rather than kept alongside the curves, and the legacy `auto` value is not migrated.
-- Phase 7 — OLED custom text/image, rotation, sleep-timeout as a configurable value (v1 ships it as a fixed default; v2 exposes it in the CLI/config).
+- Phase 7 — OLED custom text, custom image (shipped, PER-49), rotation (shipped, PER-50), sleep-timeout as a configurable value (v1 ships it as a fixed default; v2 exposes it in the CLI/config).
 
 ## 7. Testing / validation strategy
 
