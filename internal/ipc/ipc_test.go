@@ -82,7 +82,7 @@ func TestListenSetsSocketPermissions(t *testing.T) {
 		t.Fatalf("Stat: %v", err)
 	}
 	if got := info.Mode().Perm(); got != 0o660 {
-		t.Fatalf("expected socket mode 0660 per ADR-0002, got %o", got)
+		t.Fatalf("expected socket mode 0660, got %o", got)
 	}
 }
 
