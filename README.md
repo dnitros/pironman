@@ -2,6 +2,13 @@
 
 CLI and daemon for the Pironman 5 case (base edition) on a Raspberry Pi 5. It controls the RGB strip, the OLED display and the case fan, and handles the power button.
 
+> [!IMPORTANT]
+> This is an independent Go rewrite of SunFounder's Pironman 5 software, [sunfounder/pironman5](https://github.com/sunfounder/pironman5), without its web dashboard. It is not affiliated with or endorsed by SunFounder.
+>
+> I built it for my own use, on my own Raspberry Pi 5 and Pironman 5 (base edition). It has not been tested on the Pironman 5 Pro, Max, Pro Max or Mini.
+>
+> It isn't perfect and may not work, or may break things, on your machine. It comes with no guarantees; use it at your own risk.
+
 ## Requirements
 
 - Raspberry Pi 5 with a systemd-based OS.
