@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"fmt"
 	"image"
-	"image/color"
 	"maps"
 	"math"
 	"slices"
@@ -22,11 +21,6 @@ const (
 	mixRightX      = 39
 	mixRightWidth  = 88
 	mixRowHeight   = 10
-)
-
-var (
-	pixelOn  = color.Gray{Y: 255}
-	pixelOff = color.Gray{Y: 0}
 )
 
 type mixInfo struct {
@@ -91,48 +85,25 @@ func usageLabel(prefix string, used, total uint64) string {
 	return s
 }
 
-func formatUsedTotal(used, total uint64, decimals int) string {
-	units := [...]string{"B", "KB", "MB", "GB", "TB"}
-	u, t := float64(used), float64(total)
-	unit := 0
-	for t >= 1024 && unit < len(units)-1 {
-		u /= 1024
-		t /= 1024
-		unit++
-	}
-	return fmt.Sprintf("%.*f/%.*f %s", decimals, u, decimals, t, units[unit])
-}
-
 func renderMix(v mixInfo) *image.Gray {
 	img := newFrame()
 
-	drawText(img, "CPU", centeredX("CPU", mixLeftCenterX), 0, pixelOn)
+	drawText(img, textFace, "CPU", centeredX(textFace, "CPU", mixLeftCenterX), 0, pixelOn)
 	drawGauge(img, mixLeftCenterX, 27, 180, v.cpuPercent)
 	cpu := fmt.Sprintf("%.1f%%", v.cpuPercent)
-	drawText(img, cpu, centeredX(cpu, mixLeftCenterX), 27, pixelOn)
+	drawText(img, textFace, cpu, centeredX(textFace, cpu, mixLeftCenterX), 27, pixelOn)
 	temp := fmt.Sprintf("%.1f°C", v.cpuTempC)
-	drawText(img, temp, centeredX(temp, mixLeftCenterX), 37, pixelOn)
+	drawText(img, textFace, temp, centeredX(textFace, temp, mixLeftCenterX), 37, pixelOn)
 	drawGauge(img, mixLeftCenterX, 48, 0, v.cpuTempC)
 
-	drawText(img, v.ramLabel, mixRightX, 17, pixelOn)
-	drawBar(img, mixRightX, 29, v.ramPercent)
-	drawText(img, v.diskLabel, mixRightX, 41, pixelOn)
-	drawBar(img, mixRightX, 53, v.diskPercent)
+	drawText(img, textFace, v.ramLabel, mixRightX, 17, pixelOn)
+	drawBar(img, mixRightX, 29, mixRightWidth, mixRowHeight, v.ramPercent)
+	drawText(img, textFace, v.diskLabel, mixRightX, 41, pixelOn)
+	drawBar(img, mixRightX, 53, mixRightWidth, mixRowHeight, v.diskPercent)
 
 	fillRect(img, mixRightX, 0, mixRightX+mixRightWidth, mixRowHeight, pixelOn)
-	drawText(img, v.ip, centeredX(v.ip, mixRightX+mixRightWidth/2), 0, pixelOff)
+	drawText(img, textFace, v.ip, centeredX(textFace, v.ip, mixRightX+mixRightWidth/2), 0, pixelOff)
 	return img
-}
-
-func drawText(img *image.Gray, s string, x, y int, c color.Gray) {
-	d := &font.Drawer{Dst: img, Src: image.NewUniform(c), Face: textFace}
-	d.Dot.X = fixed.I(x)
-	d.Dot.Y = fixed.I(y) + textFace.Metrics().Ascent
-	d.DrawString(s)
-}
-
-func centeredX(s string, cx int) int {
-	return cx - font.MeasureString(textFace, s).Round()/2
 }
 
 func drawGauge(img *image.Gray, cx, cy int, startDeg, percent float64) {
@@ -155,21 +126,6 @@ func drawGauge(img *image.Gray, cx, cy int, startDeg, percent float64) {
 			if edge || (percent > 0 && sweep(dx, dy) <= fillTo) {
 				img.SetGray(cx+dx, cy+dy, pixelOn)
 			}
-		}
-	}
-}
-
-func drawBar(img *image.Gray, x, y int, percent float64) {
-	x1, y1 := x+mixRightWidth, y+mixRowHeight
-	fillRect(img, x, y, x1, y1, pixelOn)
-	fillRect(img, x+1, y+1, x1-1, y1-1, pixelOff)
-	fillRect(img, x, y, x+int(mixRightWidth*min(max(percent, 0), 100)/100), y1, pixelOn)
-}
-
-func fillRect(img *image.Gray, x0, y0, x1, y1 int, c color.Gray) {
-	for y := y0; y <= y1; y++ {
-		for x := x0; x <= x1; x++ {
-			img.SetGray(x, y, c)
 		}
 	}
 }

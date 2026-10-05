@@ -41,7 +41,7 @@ See `README.md` for the full deployment flow (`daemon install`/`enable`/`start`,
 
 **Image conversion** (`internal/imageconv`, `internal/pbm`): stateless, hardware-free utility packages the `OLEDHandlers`' `oled.image` handler calls into before persisting a path onto `oled.Machine` — `imageconv.Convert`/`PersistImage` scale, dither, and write a 128x64 1-bit `.pbm` file; `pbm` decodes/encodes that format. Neither holds state or sits behind a hardware interface, unlike the layer-4 subsystem packages above.
 
-**OLED text** is rendered from embedded TTFs via `golang.org/x/image/font/opentype`. Each font lives in its own `internal/oled/fonts/<family>/` directory alongside its own `LICENSE`, so adding a font never means splitting a shared licence file.
+**OLED rendering**: each page lives in its own file (`mix.go`, `performance.go`, `ips.go`, `disk.go`) with its own `*_internal_test.go`. A page file holds a values function (stats snapshot → strings/percentages) and a render function (values → `*image.Gray`), so each half is tested on its own. Drawing helpers shared by every page (`drawText`, `drawBar`, `fillRect`, the fonts) live in `render.go`; a page file never depends on another page's file. Text is rendered from embedded TTFs via `golang.org/x/image/font/opentype`. Each font lives in its own `internal/oled/fonts/<family>/` directory alongside its own `LICENSE`, so adding a font never means splitting a shared licence file.
 
 **Config** (`internal/config`): a single YAML file (default `/etc/pironman/config.yaml`, override via `PIRONMAN_CONFIG_PATH`) holding RGB/OLED/fan settings, loaded with built-in defaults (`config.Default()`) if the file doesn't exist yet. Handlers mutate a copy, save it, then swap it in — never save partial state.
 

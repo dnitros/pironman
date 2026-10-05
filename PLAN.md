@@ -42,7 +42,9 @@ internal/
         powerbutton_linux.go — hand-rolled evdev reader (stdlib syscall only)
         shutdowner.go    — shells out to `shutdown -h now`
     rgb/                 — RGB domain logic against a hardware.WS2812 interface
-    oled/                — page state machine: advance/previous/sleep/content-scroll
+    oled/                — page state machine: advance/previous/sleep/content-scroll;
+                           one renderer file per page (mix/performance/ips/disk),
+                           shared drawing in render.go
     fan/                 — case-fan mode logic + PWM-fan reading
     powerbutton/         — press-event classification → action dispatch
     systemdunit/         — unit file template, install/uninstall
@@ -133,7 +135,7 @@ Each curve's on/off threshold pair (always_on/performance/cool/balanced/quiet) i
 **v2+ (unchanged from the brief, refined where this plan's findings apply):**
 - Phase 5 — RGB effects (breathing/flow/flow_reverse/rainbow/rainbow_reverse/hue_cycle, `--speed`).
 - Phase 6 — Case-fan modes (shipped, PER-47): `always_on`/`performance`/`cool`/`balanced`/`quiet`, at always-on/50/60/67.5/75°C on and 45/55/62.5/70°C off (correcting the brief's guessed 70°C for `quiet`'s *on* threshold to the original's actual 75°C — 70°C is `quiet`'s *off* threshold), each a fixed 5°C hysteresis band. Reuses `case_fan_state` for the curve name — no second config field or custom threshold was added. Manual `fan on`/`fan off` were removed rather than kept alongside the curves, and the legacy `auto` value is not migrated.
-- Phase 7 — OLED mix-page dashboard with pie gauges, usage bars, an inverted IP box and Minecraftia text (PER-27), custom text, custom image (shipped, PER-49), rotation (shipped, PER-50), sleep-timeout as a configurable value (shipped, PER-51).
+- Phase 7 — OLED mix-page dashboard with pie gauges, usage bars, an inverted IP box and Minecraftia text (PER-27), `performance`/`ips`/`disk` redrawn in the same style (PER-52), custom text, custom image (shipped, PER-49), rotation (shipped, PER-50), sleep-timeout as a configurable value (shipped, PER-51).
 
 ## 7. Testing / validation strategy
 

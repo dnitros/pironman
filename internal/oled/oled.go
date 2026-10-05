@@ -44,6 +44,7 @@ type Machine struct {
 	display hardware.SSD1306Display
 	stats   sysstats.Source
 	clock   clock.Clock
+	fan     hardware.PWMFanReader
 
 	pages   []string
 	pageIdx int
@@ -107,6 +108,7 @@ func NewConfiguredMachine(enabled bool, pageOrder []string, sleepTimeoutSeconds,
 	if err != nil {
 		return nil, err
 	}
+	m.fan = hardware.NewSysPWMFanReader(hardware.PWMFanCoolingStatePath, hardware.PWMFanHwmonFanInputGlob)
 	if err := m.SetImages(imagePaths, time.Duration(imageIntervalSeconds)*time.Second); err != nil {
 		return nil, fmt.Errorf("apply initial OLED images: %w", err)
 	}
@@ -356,11 +358,11 @@ func (m *Machine) pageFrameLocked() (*image.Gray, error) {
 	case PageMix:
 		return renderMix(mixValues(snap, m.scrollIdx)), nil
 	case PagePerformance:
-		return renderLines(performanceLines(snap)), nil
+		return renderPerformance(performanceValues(snap, fanRPMText(m.fan))), nil
 	case PageIPs:
-		return renderLines(ipsLines(snap, m.scrollIdx)), nil
+		return renderIPs(ipRows(snap, m.scrollIdx)), nil
 	case PageDisk:
-		return renderLines(diskLines(snap, m.scrollIdx)), nil
+		return renderDisks(diskRows(snap, m.scrollIdx)), nil
 	default:
 		return nil, fmt.Errorf("oled: unknown page %q", page)
 	}
