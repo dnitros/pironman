@@ -25,11 +25,14 @@ jobs:
           GOOS: linux
           GOARCH: arm64
           CGO_ENABLED: "0"
-        run: go build -trimpath -ldflags "-s -w -X github.com/dnitros/pironman/internal/cli.version=${GITHUB_REF_NAME}" -o pironman-linux-arm64 ./cmd/pironman
-
-      - run: sha256sum pironman-linux-arm64 > checksums.txt
+        run: |
+          go build -trimpath -o "pironman-${GOOS}-${GOARCH}" -ldflags "-s -w \
+            -X github.com/dnitros/pironman/internal/cli.version=${GITHUB_REF_NAME} \
+            -X github.com/dnitros/pironman/internal/selfupdate.Repo=${GITHUB_REPOSITORY}" \
+            ./cmd/pironman
+          sha256sum pironman-* > checksums.txt
 
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" pironman-linux-arm64 checksums.txt --title "$GITHUB_REF_NAME" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" pironman-* checksums.txt --title "$GITHUB_REF_NAME" --generate-notes

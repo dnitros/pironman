@@ -37,9 +37,13 @@ func newUpdateCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("resolve pironman binary path: %w", err)
 			}
+			latestURL, err := selfupdate.LatestURL()
+			if err != nil {
+				return err
+			}
 			return runUpdate(updateEnv{
 				client:    &http.Client{Timeout: 2 * time.Minute},
-				latestURL: selfupdate.LatestURL,
+				latestURL: latestURL,
 				binPath:   exe,
 				current:   versionString(),
 				mgr:       systemdunit.NewManager(),

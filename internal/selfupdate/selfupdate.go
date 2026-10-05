@@ -12,16 +12,37 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
+	"runtime/debug"
 	"strings"
 )
 
 const (
-	LatestURL      = "https://api.github.com/repos/dnitros/pironman/releases/latest"
-	BinaryAsset    = "pironman-linux-arm64"
+	BinaryAsset    = "pironman-" + runtime.GOOS + "-" + runtime.GOARCH
 	ChecksumsAsset = "checksums.txt"
 
 	maxDownloadBytes = 64 << 20
 )
+
+var (
+	Repo          string
+	readBuildInfo = debug.ReadBuildInfo
+)
+
+func LatestURL() (string, error) {
+	repo := Repo
+	if repo == "" {
+		if info, ok := readBuildInfo(); ok {
+			if r, found := strings.CutPrefix(info.Main.Path, "github.com/"); found {
+				repo = r
+			}
+		}
+	}
+	if repo == "" {
+		return "", fmt.Errorf("no release repository for this build: build with -ldflags \"-X github.com/dnitros/pironman/internal/selfupdate.Repo=<owner>/<repo>\"")
+	}
+	return "https://api.github.com/repos/" + repo + "/releases/latest", nil
+}
 
 type Release struct {
 	Tag          string
