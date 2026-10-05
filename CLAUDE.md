@@ -46,6 +46,16 @@ Use these terms exactly:
 - **Case fan**: the case's fans on the GPIO relay, run by one of five curves. Their built-in RGB follows the fan's power.
 - **RGB strip**: the 4 WS2812 LEDs on the main board, driven by `pironman rgb`.
 
-## Issue tracking
+## Agent skills
 
-Linear, team **Personal** (`PER`), project **Pironman 5**, via the `mcp__linear-server__*` tools. Each ticket gets one branch named by its `gitBranchName` and one PR on `dnitros/pironman`. Status, QA and review summaries go on the Linear ticket. Triage labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`.
+### Issue tracker
+
+Issues live in Linear, team **Personal** (`PER`), project **Pironman 5**. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default canonical labels, used as-is. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context. The glossary is the Vocabulary section above; there is no `CONTEXT.md` or `docs/adr/`. See `docs/agents/domain.md`.
