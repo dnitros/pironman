@@ -20,12 +20,21 @@ make install   # build, copy to /usr/local/bin, install, enable and start the se
 
 ## Update
 
-The service already points at `/usr/local/bin/pironman`, so an update only replaces the binary and restarts the service:
+```sh
+sudo pironman update          # install the latest GitHub release and restart the service
+pironman update --check       # only report whether a newer release exists
+make update                   # or rebuild from a source checkout instead
+```
 
-On the Pi:
+`pironman update` verifies the download against the release's SHA-256 checksum and swaps the binary in one step. A failed download or checksum leaves the installed binary unchanged.
+
+## Releasing
+
+Push a `v*` tag. The release workflow tests, builds `pironman-linux-arm64`, and publishes it with `checksums.txt`:
 
 ```sh
-make update   # rebuild, replace the binary, restart the service, print the version
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
 ## Usage
@@ -34,7 +43,8 @@ make update   # rebuild, replace the binary, restart the service, print the vers
 |---|---|
 | `pironman status` | Show RGB, OLED, case fan and PWM fan state |
 | `pironman doctor` | Check the daemon, service, socket and config |
-| `pironman version` | Show the build's git SHA |
+| `pironman version` | Show the release tag, or the git SHA for a local build |
+| `sudo pironman update [--check]` | Install the latest release and restart the service |
 | `pironman rgb on\|off` | Turn the RGB strip on or off |
 | `pironman rgb color <#hex>` | Set a solid color |
 | `pironman rgb brightness <0-100>` | Set brightness |

@@ -28,10 +28,10 @@ type fakeServiceManager struct {
 	active      bool
 	unsupported bool
 
-	installErr, uninstallErr, startErr, stopErr, enableErr, disableErr, isInstalledErr, isActiveErr error
+	installErr, uninstallErr, startErr, stopErr, restartErr, enableErr, disableErr, isInstalledErr, isActiveErr error
 
-	installCalled, uninstallCalled, startCalled, stopCalled, enableCalled, disableCalled bool
-	installContent                                                                       string
+	installCalled, uninstallCalled, startCalled, stopCalled, restartCalled, enableCalled, disableCalled bool
+	installContent                                                                                      string
 }
 
 func (f *fakeServiceManager) IsSupported() bool {
@@ -73,6 +73,11 @@ func (f *fakeServiceManager) Start() error {
 func (f *fakeServiceManager) Stop() error {
 	f.stopCalled = true
 	return f.stopErr
+}
+
+func (f *fakeServiceManager) Restart() error {
+	f.restartCalled = true
+	return f.restartErr
 }
 
 func (f *fakeServiceManager) Enable() error {

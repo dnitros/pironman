@@ -31,6 +31,8 @@ Layers, outside in:
 
 **OLED pages**: each page has its own file in `internal/oled` (`mix.go`, `performance.go`, `ips.go`, `disk.go`) with its own `*_internal_test.go`. A page file has a values function (stats → strings and percentages) and a render function (values → `*image.Gray`). Shared drawing (`drawText`, `drawBar`, `fillRect`, the fonts) lives in `render.go`. Page files depend only on `render.go`, never on each other. Fonts are embedded TTFs, each in `internal/oled/fonts/<family>/` with its own `LICENSE`.
 
+**Releases**: a `v*` tag runs `.github/workflows/release.yml`, which builds `pironman-linux-arm64` with the tag stamped into `cli.version` via `-ldflags -X`, and publishes it with `checksums.txt`. `pironman update` (`internal/selfupdate`) downloads the latest release, verifies its SHA-256, renames it over the running binary, and restarts the service if it's running. Both asset names are constants in `internal/selfupdate`; change them there and in the workflow together.
+
 **Images**: `internal/imageconv` converts images to 128x64 1-bit `.pbm`, and `internal/pbm` reads and writes that format. Both are stateless and hardware-free.
 
 ## Vocabulary
