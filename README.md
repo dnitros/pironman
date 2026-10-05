@@ -13,11 +13,26 @@ CLI and daemon for the Pironman 5 case (base edition) on a Raspberry Pi 5. It co
 
 - Raspberry Pi 5 with a systemd-based OS.
 - SPI and I2C enabled: `sudo raspi-config` → Interface Options, or `dtparam=spi=on` and `dtparam=i2c_arm=on` in `/boot/firmware/config.txt`.
-- Go 1.27.1 or later to build.
+- Go 1.27.1 or later, only to build from source.
 
 ## Install
 
-On the Pi:
+On the Pi, from the latest release:
+
+```sh
+cd /tmp
+curl -fsSLO https://github.com/dnitros/pironman/releases/latest/download/pironman-linux-arm64
+curl -fsSLO https://github.com/dnitros/pironman/releases/latest/download/checksums.txt
+sha256sum -c checksums.txt   # must print: pironman-linux-arm64: OK
+sudo install -m 0755 pironman-linux-arm64 /usr/local/bin/pironman
+sudo pironman daemon install
+sudo pironman daemon enable
+sudo pironman daemon start
+```
+
+Run `daemon install` from `/usr/local/bin/pironman`: the service runs the binary it was installed from.
+
+From source, in a clone of this repo:
 
 ```sh
 make install   # build, copy to /usr/local/bin, install, enable and start the service
