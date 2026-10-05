@@ -22,12 +22,11 @@ make install   # build, copy to /usr/local/bin, install, enable and start the se
 
 The service already points at `/usr/local/bin/pironman`, so an update only replaces the binary and restarts the service:
 
-```sh
-make update                 # on the Pi
-make deploy HOST=<ssh-host> # from another machine: cross-compile, copy, restart
-```
+On the Pi:
 
-Both print `pironman version` at the end to confirm the new build is running.
+```sh
+make update   # rebuild, replace the binary, restart the service, print the version
+```
 
 ## Usage
 
@@ -79,7 +78,7 @@ Images from `oled image` are stored in `images/` next to the config file. Change
 ## Development
 
 ```sh
-make build   # or build-pi to cross-compile for linux/arm64
+make build
 make test
 make vet
 make         # list all targets
