@@ -42,7 +42,9 @@ internal/
         powerbutton_linux.go — hand-rolled evdev reader (stdlib syscall only)
         shutdowner.go    — shells out to `shutdown -h now`
     rgb/                 — RGB domain logic against a hardware.WS2812 interface
-    oled/                — page state machine: advance/previous/sleep/content-scroll
+    oled/                — page state machine: advance/previous/sleep/content-scroll;
+                           one renderer file per page (mix/performance/ips/disk),
+                           shared drawing in render.go
     fan/                 — case-fan mode logic + PWM-fan reading
     powerbutton/         — press-event classification → action dispatch
     systemdunit/         — unit file template, install/uninstall
