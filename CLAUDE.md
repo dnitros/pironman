@@ -30,7 +30,7 @@ See `README.md` for the full deployment flow (`daemon install`/`enable`/`start`,
 
 ## Architecture
 
-**Two processes, one socket.** The CLI and a root-owned daemon (`pironman daemon run`) talk over a Unix domain socket (`internal/ipc`, default `/run/pironman/pironman.sock`, override via `PIRONMAN_SOCKET_PATH`), exchanging newline-delimited JSON `Request`/`Response` frames — see [ADR-0001](docs/adr/0001-newline-delimited-json-ipc.md). The socket is `root:pironman`-owned at `0660`; `daemon install` creates that group and adds the invoking user so the CLI doesn't need sudo for normal commands — see [ADR-0002](docs/adr/0002-socket-group-permissions.md). The `daemon` subcommands themselves (`install`/`start`/`stop`/`enable`/`disable`/`uninstall`) always require sudo, enforced directly in `internal/cli/daemon.go`, independent of group membership.
+**Two processes, one socket.** The CLI and a root-owned daemon (`pironman daemon run`) talk over a Unix domain socket (`internal/ipc`, default `/run/pironman/pironman.sock`, override via `PIRONMAN_SOCKET_PATH`), exchanging newline-delimited JSON `Request`/`Response` frames. Traffic is low-frequency control commands, so plain JSON (inspectable with `socat`/`nc`, no codegen) is preferred over binary framing or an RPC framework. The socket is `root:pironman`-owned at `0660`; `daemon install` creates that group and adds the invoking user so the CLI doesn't need sudo for normal commands. A world-writable socket would let any local user drive the hardware, and per-connection `SO_PEERCRED` checks are more than a single-user Pi needs. The `daemon` subcommands themselves (`install`/`start`/`stop`/`enable`/`disable`/`uninstall`) always require sudo, enforced directly in `internal/cli/daemon.go`, independent of group membership.
 
 **Layering**, outside-in:
 1. `internal/cli` — cobra commands. Each CLI command (`rgb`, `oled`, `fan`, `status`, `doctor`, `daemon`) builds an `ipc.Request` and sends it over the socket via `internal/ipc` client code.
@@ -45,7 +45,7 @@ See `README.md` for the full deployment flow (`daemon install`/`enable`/`start`,
 
 **Config** (`internal/config`): a single YAML file (default `/etc/pironman/config.yaml`, override via `PIRONMAN_CONFIG_PATH`) holding RGB/OLED/fan settings, loaded with built-in defaults (`config.Default()`) if the file doesn't exist yet. Handlers mutate a copy, save it, then swap it in — never save partial state.
 
-**Daemon shutdown**: `serveDaemon` runs a list of `shutdownHooks` (closures) after `ipc.Server.Serve` returns, turning off RGB/fan so they don't stay energized when the daemon isn't managing them. `Server.Serve` drains in-flight connections via `sync.WaitGroup` first, so a hook never races a handler's hardware write — see [ADR-0003](docs/adr/0003-daemon-shutdown-hooks-and-connection-draining.md).
+**Daemon shutdown**: `serveDaemon` runs a list of `shutdownHooks` (closures) after `ipc.Server.Serve` returns, turning off RGB/fan so they don't stay energized when the daemon isn't managing them. `Server.Serve` drains in-flight connections via `sync.WaitGroup` first, so a hook never races a handler's hardware write. A hook's own failure is logged, not fatal, so it never blocks exit or later hooks.
 
 **Domain vocabulary** (OLED page vs. page advance vs. content scroll, press event, PWM fan vs. case fan, RGB strip) is defined precisely in `CONTEXT.md` — read it before touching OLED or power-button code, since the terms are easy to conflate and the codebase uses them exactly as defined there.
 
@@ -53,12 +53,12 @@ See `README.md` for the full deployment flow (`daemon install`/`enable`/`start`,
 
 ### Issue tracker
 
-Issues live in Linear, team **Personal** (`PER`), project **Pironman 5**. See `docs/agents/issue-tracker.md`.
+Issues live in Linear, team **Personal** (`PER`), project **Pironman 5**, via the `mcp__linear-server__*` tools. Each ticket gets one branch, named by its `gitBranchName`, and one PR on GitHub (`dnitros/pironman`, via `gh`). Status, QA and review summaries go on the Linear ticket, not the PR.
 
 ### Triage labels
 
-Default canonical labels, used as-is. See `docs/agents/triage-labels.md`.
+`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`, used as-is. A label that doesn't exist yet in Linear is created on first use.
 
 ### Domain docs
 
-Single-context: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+Single-context: `CONTEXT.md` at the repo root.
