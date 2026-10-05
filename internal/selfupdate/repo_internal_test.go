@@ -41,3 +41,21 @@ func TestLatestURLFailsWithoutAGitHubRepo(t *testing.T) {
 		t.Fatalf("LatestURL() error = %v, want a hint to stamp the repo", err)
 	}
 }
+
+func TestLatestURLUsesOwnerAndNameFromVersionedModulePath(t *testing.T) {
+	withBuild(t, "", "github.com/dnitros/pironman/v2")
+
+	got, err := LatestURL()
+	if err != nil || got != "https://api.github.com/repos/dnitros/pironman/releases/latest" {
+		t.Fatalf("LatestURL() = %q, %v; want owner/name only", got, err)
+	}
+}
+
+func TestLatestURLRejectsMalformedStampedRepo(t *testing.T) {
+	for _, stamped := range []string{"dnitros", "dnitros/pironman/extra", "../evil/repo", "dnitros/pironman?x=1", "owner/ name"} {
+		withBuild(t, stamped, "github.com/dnitros/pironman")
+		if got, err := LatestURL(); err == nil {
+			t.Fatalf("LatestURL() with Repo=%q = %q, want an error", stamped, got)
+		}
+	}
+}

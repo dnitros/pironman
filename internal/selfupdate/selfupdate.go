@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"runtime/debug"
 	"strings"
@@ -27,6 +28,7 @@ const (
 var (
 	Repo          string
 	readBuildInfo = debug.ReadBuildInfo
+	repoPattern   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9][A-Za-z0-9._-]*$`)
 )
 
 func LatestURL() (string, error) {
@@ -34,12 +36,17 @@ func LatestURL() (string, error) {
 	if repo == "" {
 		if info, ok := readBuildInfo(); ok {
 			if r, found := strings.CutPrefix(info.Main.Path, "github.com/"); found {
-				repo = r
+				if parts := strings.SplitN(r, "/", 3); len(parts) >= 2 {
+					repo = parts[0] + "/" + parts[1]
+				}
 			}
 		}
 	}
 	if repo == "" {
 		return "", fmt.Errorf("no release repository for this build: build with -ldflags \"-X github.com/dnitros/pironman/internal/selfupdate.Repo=<owner>/<repo>\"")
+	}
+	if !repoPattern.MatchString(repo) {
+		return "", fmt.Errorf("invalid release repository %q: want <owner>/<repo>", repo)
 	}
 	return "https://api.github.com/repos/" + repo + "/releases/latest", nil
 }
