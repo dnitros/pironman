@@ -13,7 +13,7 @@ Switching the OLED from one page to another. Triggered only by a power-button pr
 _Avoid_: auto-cycle, page rotation (see OLED rotation for the actual meaning of "rotation" in this codebase)
 
 **Content scroll**:
-Cycling automatically, on a fixed timer, through multiple values displayed *within* a single page (e.g. several IP addresses on the `ips` page, several disks on the `disk` page, or several configured images on the `image` page). Distinct from page advance: a page's content scrolls on its own while the page itself only changes on a button press.
+Cycling automatically, on a fixed timer, through multiple values displayed *within* a single page (e.g. several IP addresses on the `ips` page, the LAN and Tailscale addresses on the `mix` page, several disks on the `disk` page, or several configured images on the `image` page). Distinct from page advance: a page's content scrolls on its own while the page itself only changes on a button press.
 _Avoid_: auto-cycle, page rotation (see OLED rotation for the actual meaning of "rotation" in this codebase)
 
 **OLED rotation**:

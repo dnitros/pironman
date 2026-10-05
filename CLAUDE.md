@@ -41,6 +41,8 @@ See `README.md` for the full deployment flow (`daemon install`/`enable`/`start`,
 
 **Image conversion** (`internal/imageconv`, `internal/pbm`): stateless, hardware-free utility packages the `OLEDHandlers`' `oled.image` handler calls into before persisting a path onto `oled.Machine` — `imageconv.Convert`/`PersistImage` scale, dither, and write a 128x64 1-bit `.pbm` file; `pbm` decodes/encodes that format. Neither holds state or sits behind a hardware interface, unlike the layer-4 subsystem packages above.
 
+**OLED text** is rendered from embedded TTFs via `golang.org/x/image/font/opentype`. Each font lives in its own `internal/oled/fonts/<family>/` directory alongside its own `LICENSE`, so adding a font never means splitting a shared licence file.
+
 **Config** (`internal/config`): a single YAML file (default `/etc/pironman/config.yaml`, override via `PIRONMAN_CONFIG_PATH`) holding RGB/OLED/fan settings, loaded with built-in defaults (`config.Default()`) if the file doesn't exist yet. Handlers mutate a copy, save it, then swap it in — never save partial state.
 
 **Daemon shutdown**: `serveDaemon` runs a list of `shutdownHooks` (closures) after `ipc.Server.Serve` returns, turning off RGB/fan so they don't stay energized when the daemon isn't managing them. `Server.Serve` drains in-flight connections via `sync.WaitGroup` first, so a hook never races a handler's hardware write — see [ADR-0003](docs/adr/0003-daemon-shutdown-hooks-and-connection-draining.md).
