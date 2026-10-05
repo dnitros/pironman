@@ -72,8 +72,8 @@ func TestUpdateInstallsNewerReleaseAndRestartsService(t *testing.T) {
 	if !mgr.restartCalled {
 		t.Fatalf("expected the running service to be restarted")
 	}
-	if !strings.Contains(out.String(), "v1.1.0 → v1.2.0") {
-		t.Fatalf("output = %q, want old → new versions", out.String())
+	if !strings.Contains(out.String(), "v1.1.0 → v1.2.0") || strings.Contains(out.String(), "not restarted") {
+		t.Fatalf("output = %q, want old → new versions and no not-restarted note", out.String())
 	}
 }
 
@@ -81,12 +81,16 @@ func TestUpdateLeavesStoppedServiceStopped(t *testing.T) {
 	asRoot(t)
 	srv, _ := newUpdateServer(t, "v1.2.0", []byte("new"), []byte("new"))
 	mgr := &fakeServiceManager{installed: true, active: false}
+	var out bytes.Buffer
 
-	if err := runUpdate(updateEnv{client: srv.Client(), latestURL: srv.URL + "/latest", binPath: newUpdateTarget(t), current: "v1.1.0", mgr: mgr}, false, &bytes.Buffer{}); err != nil {
+	if err := runUpdate(updateEnv{client: srv.Client(), latestURL: srv.URL + "/latest", binPath: newUpdateTarget(t), current: "v1.1.0", mgr: mgr}, false, &out); err != nil {
 		t.Fatalf("runUpdate: %v", err)
 	}
 	if mgr.restartCalled {
 		t.Fatalf("restarted a stopped service, want it left stopped")
+	}
+	if !strings.Contains(out.String(), "service not running, not restarted") {
+		t.Fatalf("output = %q, want it to say the service was not restarted", out.String())
 	}
 }
 

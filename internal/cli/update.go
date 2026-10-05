@@ -85,14 +85,19 @@ func runUpdate(env updateEnv, check bool, w io.Writer) error {
 	}
 
 	updated := fmt.Sprintf("updated %s → %s", env.current, rel.Tag)
+	restarted := false
 	if env.mgr.IsSupported() {
 		active, err := env.mgr.IsActive()
 		if err == nil && active {
 			err = env.mgr.Restart()
+			restarted = err == nil
 		}
 		if err != nil {
 			return fmt.Errorf("%s, but the service was not restarted: %w — run `sudo systemctl restart %s`", updated, err, systemdunit.ServiceName)
 		}
+	}
+	if !restarted {
+		updated += " (service not running, not restarted)"
 	}
 	fmt.Fprintln(w, updated)
 	return nil
