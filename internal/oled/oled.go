@@ -293,18 +293,18 @@ func (m *Machine) renderLocked() error {
 	}
 
 	if !m.awake {
-		return m.display.Draw(image.NewGray(image.Rect(0, 0, hardware.SSD1306Width, hardware.SSD1306Height)))
+		return m.display.Draw(newFrame())
 	}
 
 	if m.pages[m.pageIdx] == PageImage {
 		return m.display.Draw(m.currentImageLocked())
 	}
 
-	lines, err := m.pageLinesLocked()
+	frame, err := m.pageFrameLocked()
 	if err != nil {
 		return err
 	}
-	return m.display.Draw(renderLines(lines))
+	return m.display.Draw(frame)
 }
 
 func (m *Machine) currentImageLocked() *image.Gray {
@@ -344,7 +344,7 @@ func (m *Machine) loadImageLocked(path string) (*image.Gray, error) {
 	return img, nil
 }
 
-func (m *Machine) pageLinesLocked() ([]string, error) {
+func (m *Machine) pageFrameLocked() (*image.Gray, error) {
 	page := m.pages[m.pageIdx]
 
 	snap, err := m.stats.Snapshot()
@@ -354,13 +354,13 @@ func (m *Machine) pageLinesLocked() ([]string, error) {
 
 	switch page {
 	case PageMix:
-		return mixLines(snap, m.scrollIdx), nil
+		return renderMix(mixValues(snap, m.scrollIdx)), nil
 	case PagePerformance:
-		return performanceLines(snap), nil
+		return renderLines(performanceLines(snap)), nil
 	case PageIPs:
-		return ipsLines(snap, m.scrollIdx), nil
+		return renderLines(ipsLines(snap, m.scrollIdx)), nil
 	case PageDisk:
-		return diskLines(snap, m.scrollIdx), nil
+		return renderLines(diskLines(snap, m.scrollIdx)), nil
 	default:
 		return nil, fmt.Errorf("oled: unknown page %q", page)
 	}

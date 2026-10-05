@@ -84,6 +84,9 @@ func (s *ProcSource) Snapshot() (Snapshot, error) {
 	}
 	interfaces := make(map[string]string, len(ifaces))
 	for _, ifc := range ifaces {
+		if ifc.Name == "docker0" || strings.HasPrefix(ifc.Name, "br-") {
+			continue
+		}
 		interfaces[ifc.Name] = ifc.IP
 	}
 
@@ -319,7 +322,7 @@ func defaultListInterfaces() ([]netIface, error) {
 
 	var result []netIface
 	for _, ifc := range ifaces {
-		if ifc.Flags&net.FlagUp == 0 || ifc.Flags&net.FlagLoopback != 0 {
+		if ifc.Flags&net.FlagRunning == 0 || ifc.Flags&net.FlagLoopback != 0 {
 			continue
 		}
 		addrs, err := ifc.Addrs()

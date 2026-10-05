@@ -471,8 +471,8 @@ func TestSetSleepTimeoutRejectsOutOfRangeValues(t *testing.T) {
 func TestTickScrollsMixPageContentOnlyAfterScrollInterval(t *testing.T) {
 	display := &fakeDisplay{}
 	stats := &fakeStats{snap: sysstats.Snapshot{Interfaces: map[string]string{
-		"eth0":  "192.168.1.5",
-		"wlan0": "10.0.0.2",
+		"eth0":       "192.168.1.5",
+		"tailscale0": "100.64.0.1",
 	}}}
 	clock := newFakeClock()
 	m, err := oled.NewMachine(display, stats, clock, defaultPages(), 10*time.Second, 3*time.Second, true)
