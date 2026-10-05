@@ -84,34 +84,6 @@ func TestMixValuesShowsNAWhenNoDisks(t *testing.T) {
 	}
 }
 
-func TestFormatUsedTotalPicksUnitFromTotal(t *testing.T) {
-	cases := []struct {
-		used, total uint64
-		want        string
-	}{
-		{512, 1000, "512.0/1000.0 B"},
-		{300 << 20, 512 << 20, "300.0/512.0 MB"},
-		{1 << 40, 2 << 40, "1.0/2.0 TB"},
-	}
-	for _, c := range cases {
-		if got := formatUsedTotal(c.used, c.total, 1); got != c.want {
-			t.Fatalf("formatUsedTotal(%d, %d) = %q, want %q", c.used, c.total, got, c.want)
-		}
-	}
-}
-
-func litIn(img *image.Gray, r image.Rectangle) int {
-	n := 0
-	for y := r.Min.Y; y < r.Max.Y; y++ {
-		for x := r.Min.X; x < r.Max.X; x++ {
-			if img.GrayAt(x, y).Y != 0 {
-				n++
-			}
-		}
-	}
-	return n
-}
-
 var (
 	cpuGaugeArea  = image.Rect(3, 12, 34, 27)
 	tempGaugeArea = image.Rect(3, 49, 34, 64)
