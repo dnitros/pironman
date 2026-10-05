@@ -10,17 +10,23 @@ CLI and daemon for the Pironman 5 case (base edition) on a Raspberry Pi 5. It co
 
 ## Install
 
-`daemon install` writes the binary's current path into the systemd unit, so copy it into place first:
+On the Pi:
 
 ```sh
-go build -o pironman ./cmd/pironman
-sudo cp pironman /usr/local/bin/pironman
-sudo pironman daemon install
-sudo pironman daemon enable   # start on boot
-sudo pironman daemon start    # start now
+make install   # build, copy to /usr/local/bin, install, enable and start the service
 ```
 
 `daemon install` adds you to the `pironman` group, which can use the control socket without `sudo`. Log out and back in for it to take effect. If it can't add you, it prints the `usermod` command to run.
+
+## Update
+
+The service already points at `/usr/local/bin/pironman`, so an update only replaces the binary and restarts the service:
+
+On the Pi:
+
+```sh
+make update   # rebuild, replace the binary, restart the service, print the version
+```
 
 ## Usage
 
@@ -72,9 +78,10 @@ Images from `oled image` are stored in `images/` next to the config file. Change
 ## Development
 
 ```sh
-go build -o pironman ./cmd/pironman
-go test ./...
-go vet ./...
+make build
+make test
+make vet
+make         # list all targets
 ```
 
 The daemon needs the real hardware, so the hardware-facing packages are tested against fakes. To try CLI commands without root, point them at another socket:
