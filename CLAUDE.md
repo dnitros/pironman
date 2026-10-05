@@ -47,7 +47,16 @@ See `README.md` for the full deployment flow (`daemon install`/`enable`/`start`,
 
 **Daemon shutdown**: `serveDaemon` runs a list of `shutdownHooks` (closures) after `ipc.Server.Serve` returns, turning off RGB/fan so they don't stay energized when the daemon isn't managing them. `Server.Serve` drains in-flight connections via `sync.WaitGroup` first, so a hook never races a handler's hardware write. A hook's own failure is logged, not fatal, so it never blocks exit or later hooks.
 
-**Domain vocabulary** (OLED page vs. page advance vs. content scroll, press event, PWM fan vs. case fan, RGB strip) is defined precisely in `CONTEXT.md` — read it before touching OLED or power-button code, since the terms are easy to conflate and the codebase uses them exactly as defined there.
+**Domain vocabulary**: the codebase uses these terms exactly, and they're easy to conflate:
+
+- **OLED page**: one of the full-screen contents: `mix`, `performance`, `ips`, `disk`, `image`. Not "screen" or "view".
+- **Page advance**: switching pages, only ever by a power-button press (click = next, double-click = previous), never by a timer.
+- **Content scroll**: cycling on a timer through several values *within* one page, such as IPs, disks or images. The page itself doesn't change.
+- **OLED rotation**: the display's physical orientation, `0` or `180` (`config.OLED.Rotation`). It flips every page's pixels. Never use "rotation" for page advance or content scroll.
+- **Press event**: one of `click` (wake/next page), `double-click` (previous page), `long-press` (shutdown-confirmation screen) and `long-press-released` (powering-off screen, then shutdown).
+- **PWM fan**: the Pi 5's own active cooler, governed by the kernel. This tool only reads its state and speed via sysfs.
+- **Case fan**: the Pironman case's fans on a GPIO relay, controlled together by one of five curves (`always_on` plus four temperature-gated). Their built-in RGB is powered by the same connector, so it follows the fan on/off.
+- **RGB strip**: the 4 WS2812 LEDs on the main board (SPI0/GPIO10), driven by `pironman rgb`.
 
 ## Agent skills
 
@@ -58,7 +67,3 @@ Issues live in Linear, team **Personal** (`PER`), project **Pironman 5**, via th
 ### Triage labels
 
 `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`, used as-is. A label that doesn't exist yet in Linear is created on first use.
-
-### Domain docs
-
-Single-context: `CONTEXT.md` at the repo root.
