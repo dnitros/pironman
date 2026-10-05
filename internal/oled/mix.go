@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"maps"
 	"math"
+	"slices"
+	"strings"
 
 	"golang.org/x/image/font"
 	"golang.org/x/image/math/fixed"
@@ -57,11 +60,23 @@ func mixValues(snap sysstats.Snapshot, scrollIdx int) mixInfo {
 }
 
 func mixIPs(ifaces map[string]string) []string {
-	ips := []string{cmp.Or(ifaces["eth0"], ifaces["wlan0"], "OFFLINE")}
-	if ts := ifaces["tailscale0"]; ts != "" {
-		ips = append(ips, ts)
+	lan := cmp.Or(firstIPWithPrefix(ifaces, "eth"), firstIPWithPrefix(ifaces, "wlan"))
+	if lan == "" {
+		return []string{"OFFLINE"}
 	}
-	return ips
+	if ts := firstIPWithPrefix(ifaces, "tailscale"); ts != "" {
+		return []string{lan, ts}
+	}
+	return []string{lan}
+}
+
+func firstIPWithPrefix(ifaces map[string]string, prefix string) string {
+	for _, name := range slices.Sorted(maps.Keys(ifaces)) {
+		if strings.HasPrefix(name, prefix) {
+			return ifaces[name]
+		}
+	}
+	return ""
 }
 
 func usageLabel(prefix string, used, total uint64) string {

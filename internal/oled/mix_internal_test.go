@@ -19,12 +19,16 @@ func TestMixValuesPicksIPByInterfacePreferenceAndScrollsToTailscale(t *testing.T
 	}{
 		{"eth0 only", map[string]string{"eth0": eth}, []string{eth}},
 		{"wlan0 only", map[string]string{"wlan0": wlan}, []string{wlan}},
-		{"both prefer eth0", map[string]string{"eth0": eth, "wlan0": wlan}, []string{eth}},
+		{"both prefer eth", map[string]string{"eth0": eth, "wlan0": wlan}, []string{eth}},
+		{"any eth interface", map[string]string{"eth2": eth, "wlan0": wlan}, []string{eth}},
+		{"any wlan interface", map[string]string{"wlan1": wlan}, []string{wlan}},
+		{"first eth in name order", map[string]string{"eth2": "192.168.2.9", "eth1": eth}, []string{eth}},
 		{"neither", map[string]string{}, []string{"OFFLINE"}},
-		{"other interfaces ignored", map[string]string{"usb0": "172.16.0.2", "eth1": "192.168.2.9"}, []string{"OFFLINE"}},
-		{"eth0 and tailscale0", map[string]string{"eth0": eth, "wlan0": wlan, "tailscale0": ts}, []string{eth, ts}},
-		{"wlan0 and tailscale0", map[string]string{"wlan0": wlan, "tailscale0": ts}, []string{wlan, ts}},
-		{"tailscale0 only", map[string]string{"tailscale0": ts}, []string{"OFFLINE", ts}},
+		{"other interfaces ignored", map[string]string{"usb0": "172.16.0.2", "enx0123456789ab": "192.168.3.4"}, []string{"OFFLINE"}},
+		{"eth and tailscale", map[string]string{"eth0": eth, "wlan0": wlan, "tailscale0": ts}, []string{eth, ts}},
+		{"wlan and tailscale", map[string]string{"wlan0": wlan, "tailscale0": ts}, []string{wlan, ts}},
+		{"any tailscale interface", map[string]string{"eth1": eth, "tailscale1": ts}, []string{eth, ts}},
+		{"tailscale without LAN is offline", map[string]string{"tailscale0": ts}, []string{"OFFLINE"}},
 	}
 	for _, c := range cases {
 		snap := sysstats.Snapshot{Interfaces: c.ifaces}
