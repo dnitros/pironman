@@ -124,4 +124,4 @@ PIRONMAN_SOCKET_PATH=/tmp/pironman.sock ./pironman doctor
 
 ## License
 
-[GPL-3.0](LICENSE). The embedded Minecraftia font is CC BY-SA; see [its licence](internal/oled/fonts/minecraftia/LICENSE).
+[GPL-3.0](LICENSE).
