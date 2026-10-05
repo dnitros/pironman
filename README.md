@@ -28,7 +28,7 @@ make install   # build, copy to /usr/local/bin, install, enable and start the se
 ## Update
 
 ```sh
-sudo pironman update          # install the latest GitHub release and restart the service
+sudo pironman update          # install the latest GitHub release; restarts the service if it's running
 pironman update --check       # only report whether a newer release exists
 make update                   # or rebuild from a source checkout instead
 ```
@@ -51,7 +51,7 @@ git push origin v1.0.0
 | `pironman status` | Show RGB, OLED, case fan and PWM fan state |
 | `pironman doctor` | Check the daemon, service, socket and config |
 | `pironman version` | Show the release tag, or the git SHA for a local build |
-| `sudo pironman update [--check]` | Install the latest release and restart the service |
+| `sudo pironman update [--check]` | Install the latest release; restarts the service if it's running |
 | `pironman rgb on\|off` | Turn the RGB strip on or off |
 | `pironman rgb color <#hex>` | Set a solid color |
 | `pironman rgb brightness <0-100>` | Set brightness |
