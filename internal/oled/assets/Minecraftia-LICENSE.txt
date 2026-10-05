@@ -1,0 +1,9 @@
+Minecraftia-Regular.ttf, by Andrew Tyler (2014), bundled here as copied from
+sunfounder/pm_auto's assets (pm_auto/assets/fonts/Minecraftia-Regular.ttf).
+pm_auto's own code is GPLv2-licensed; that license covers pm_auto's code, not
+this separately-licensed font asset.
+
+Minecraftia is free for personal use. Non-personal use requires a paid,
+non-transferable commercial EULA from the font's author. This project uses
+the font for a personal hobby device (Pironman 5 case firmware); re-licensing
+for any non-personal distribution is the redistributor's responsibility.

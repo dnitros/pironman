@@ -300,6 +300,14 @@ func (m *Machine) renderLocked() error {
 		return m.display.Draw(m.currentImageLocked())
 	}
 
+	if m.pages[m.pageIdx] == PageMix {
+		snap, err := m.stats.Snapshot()
+		if err != nil {
+			return fmt.Errorf("read stats: %w", err)
+		}
+		return m.display.Draw(renderMixPage(computeMixPageValues(snap, m.scrollIdx)))
+	}
+
 	lines, err := m.pageLinesLocked()
 	if err != nil {
 		return err
@@ -353,8 +361,6 @@ func (m *Machine) pageLinesLocked() ([]string, error) {
 	}
 
 	switch page {
-	case PageMix:
-		return mixLines(snap, m.scrollIdx), nil
 	case PagePerformance:
 		return performanceLines(snap), nil
 	case PageIPs:
