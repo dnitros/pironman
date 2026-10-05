@@ -174,3 +174,31 @@ func TestReplaceFailureLeavesOriginalUntouched(t *testing.T) {
 		t.Fatalf("contents = %q, want the original left in place", got)
 	}
 }
+
+func TestRepoURL(t *testing.T) {
+	const want = "https://api.github.com/repos/dnitros/pironman/releases/latest"
+	cases := []struct {
+		name, stamped, modulePath, want string
+	}{
+		{"stamped repo wins", "someone/fork", "github.com/dnitros/pironman", "https://api.github.com/repos/someone/fork/releases/latest"},
+		{"falls back to module path", "", "github.com/dnitros/pironman", want},
+		{"versioned module path keeps owner/name", "", "github.com/dnitros/pironman/v2", want},
+	}
+	for _, c := range cases {
+		got, err := selfupdate.RepoURL(c.stamped, c.modulePath)
+		if err != nil || got != c.want {
+			t.Fatalf("%s: RepoURL = %q, %v; want %q", c.name, got, err, c.want)
+		}
+	}
+}
+
+func TestRepoURLRejectsMissingOrMalformedRepo(t *testing.T) {
+	if _, err := selfupdate.RepoURL("", "example.com/pironman"); err == nil || !strings.Contains(err.Error(), "-X") {
+		t.Fatalf("RepoURL without a GitHub repo: error = %v, want a hint to stamp the repo", err)
+	}
+	for _, stamped := range []string{"dnitros", "dnitros/pironman/extra", "../evil/repo", "dnitros/pironman?x=1", "owner/ name"} {
+		if got, err := selfupdate.RepoURL(stamped, "github.com/dnitros/pironman"); err == nil {
+			t.Fatalf("RepoURL(%q) = %q, want an error", stamped, got)
+		}
+	}
+}

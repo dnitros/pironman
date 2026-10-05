@@ -26,19 +26,24 @@ const (
 )
 
 var (
-	Repo          string
-	readBuildInfo = debug.ReadBuildInfo
-	repoPattern   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9][A-Za-z0-9._-]*$`)
+	Repo        string
+	repoPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9][A-Za-z0-9._-]*$`)
 )
 
 func LatestURL() (string, error) {
-	repo := Repo
+	var modulePath string
+	if info, ok := debug.ReadBuildInfo(); ok {
+		modulePath = info.Main.Path
+	}
+	return RepoURL(Repo, modulePath)
+}
+
+func RepoURL(stamped, modulePath string) (string, error) {
+	repo := stamped
 	if repo == "" {
-		if info, ok := readBuildInfo(); ok {
-			if r, found := strings.CutPrefix(info.Main.Path, "github.com/"); found {
-				if parts := strings.SplitN(r, "/", 3); len(parts) >= 2 {
-					repo = parts[0] + "/" + parts[1]
-				}
+		if r, found := strings.CutPrefix(modulePath, "github.com/"); found {
+			if parts := strings.SplitN(r, "/", 3); len(parts) >= 2 {
+				repo = parts[0] + "/" + parts[1]
 			}
 		}
 	}
