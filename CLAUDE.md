@@ -35,16 +35,7 @@ Layers, outside in:
 
 ## Vocabulary
 
-Use these terms exactly:
-
-- **OLED page**: a full-screen content: `mix`, `performance`, `ips`, `disk`, `image`.
-- **Page advance**: switching pages, only by power-button press (click = next, double-click = previous).
-- **Content scroll**: cycling on a timer through values within one page (IPs, disks, images).
-- **OLED rotation**: display orientation, `0` or `180`. It flips pixels; it's unrelated to paging.
-- **Press event**: `click`, `double-click`, `long-press` (shutdown prompt), `long-press-released` (shutdown).
-- **PWM fan**: the Pi 5's own cooler, kernel-controlled. Read-only here, via sysfs.
-- **Case fan**: the case's fans on the GPIO relay, run by one of five curves. Their built-in RGB follows the fan's power.
-- **RGB strip**: the 4 WS2812 LEDs on the main board, driven by `pironman rgb`.
+`CONTEXT.md` defines the domain terms: OLED page, page advance, content scroll, OLED rotation, press event, PWM fan, case fan and RGB strip. Read it before touching OLED, fan or power-button code, and use its terms exactly.
 
 ## Agent skills
 
@@ -58,4 +49,4 @@ Default canonical labels, used as-is. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
-Single-context. The glossary is the Vocabulary section above; there is no `CONTEXT.md` or `docs/adr/`. See `docs/agents/domain.md`.
+Single-context: `CONTEXT.md` at the repo root; there is no `docs/adr/`. See `docs/agents/domain.md`.
