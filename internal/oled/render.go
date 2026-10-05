@@ -16,7 +16,6 @@ import (
 const textLineHeight = 13
 
 //go:embed fonts/minecraftia/Minecraftia-Regular.ttf
-
 var minecraftiaTTF []byte
 
 var (
