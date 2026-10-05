@@ -51,4 +51,4 @@ Default canonical labels, used as-is. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
-Single-context: `CONTEXT.md` at the repo root; there is no `docs/adr/`. See `docs/agents/domain.md`.
+Single-context: `CONTEXT.md` at the repo root. See `docs/agents/domain.md`.
