@@ -19,7 +19,7 @@ The CLI sends newline-delimited JSON requests to the daemon over a Unix socket (
 
 Layers, outside in:
 
-1. `internal/cli`: cobra commands. Most send one IPC request; `daemon` drives systemd and `version` runs locally.
+1. `internal/cli`: cobra commands. Most send one IPC request; `daemon` drives systemd, `update` talks to GitHub and systemd, and `version` runs locally.
 2. `runDaemon` in `internal/cli/daemon.go`: the composition root. It loads config, builds each subsystem, registers the IPC handlers, and starts the tick loops (`startTickLoop`) and the power-button watcher.
 3. `internal/handlers`: one function per subsystem (`RGBHandlers`, `OLEDHandlers`, `FanHandlers`, `StatusHandler`). A handler validates its arguments, saves the change to config, then applies it. Save before apply: config is what the daemon restores on its next start.
 4. Subsystems: `rgb.Store`, `oled.Machine`, `fan.Machine` and `powerbutton.Classifier`. Each guards its state with its own mutex and drives a `hardware` interface. The OLED and fan machines advance on `Tick()`. `rgb.Store` runs its own animation goroutine, because each style's frame delay depends on its speed setting. `dispatchPowerButtonEvent` routes classified press events to the OLED or to shutdown.
@@ -30,6 +30,8 @@ Layers, outside in:
 **Shutdown**: after `ipc.Server.Serve` returns, `serveDaemon` runs `shutdownHooks`, which turn the RGB strip and fan off. `Serve` first waits for in-flight connections, so a hook never races a handler's hardware write. A failing hook is logged and the rest still run.
 
 **OLED pages**: each page has its own file in `internal/oled` (`mix.go`, `performance.go`, `ips.go`, `disk.go`) with its own `*_internal_test.go`. A page file has a values function (stats → strings and percentages) and a render function (values → `*image.Gray`). Shared drawing (`drawText`, `drawBar`, `fillRect`, the fonts) lives in `render.go`. Page files depend only on `render.go`, never on each other. Fonts are embedded TTFs, each in `internal/oled/fonts/<family>/` with its own `LICENSE`.
+
+**Releases**: a `v*` tag runs `.github/workflows/release.yml`, which builds `pironman-<GOOS>-<GOARCH>` with the tag stamped into `cli.version` and the repo into `selfupdate.Repo` via `-ldflags -X`, and publishes it with `checksums.txt`. `pironman update` (`internal/selfupdate`) downloads the latest release, verifies its SHA-256, renames it over the running binary, and restarts the service if it's running. It replaces the binary it was run from. `selfupdate.BinaryAsset` follows the build's `runtime.GOOS/GOARCH`. `selfupdate.RepoURL` takes the stamped repo, or for an unstamped build the module path, and requires `<owner>/<repo>`.
 
 **Images**: `internal/imageconv` converts images to 128x64 1-bit `.pbm`, and `internal/pbm` reads and writes that format. Both are stateless and hardware-free.
 
@@ -49,4 +51,4 @@ Default canonical labels, used as-is. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
-Single-context: `CONTEXT.md` at the repo root; there is no `docs/adr/`. See `docs/agents/domain.md`.
+Single-context: `CONTEXT.md` at the repo root. See `docs/agents/domain.md`.

@@ -36,6 +36,7 @@ type Manager interface {
 	Uninstall() error
 	Start() error
 	Stop() error
+	Restart() error
 	Enable() error
 	Disable() error
 	IsInstalled() (bool, error)
@@ -108,6 +109,10 @@ func (SystemdManager) Start() error {
 
 func (SystemdManager) Stop() error {
 	return runSystemctl("stop", ServiceName)
+}
+
+func (SystemdManager) Restart() error {
+	return runSystemctl("restart", ServiceName)
 }
 
 func (SystemdManager) Enable() error {

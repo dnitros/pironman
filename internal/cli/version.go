@@ -7,7 +7,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var readBuildInfo = debug.ReadBuildInfo
+var (
+	version       string
+	readBuildInfo = debug.ReadBuildInfo
+)
 
 func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
@@ -19,11 +22,10 @@ func newVersionCmd() *cobra.Command {
 	}
 }
 
-// ponytail: relies solely on go build's auto-embedded VCS metadata, so a
-// binary built with -trimpath, -buildvcs=false, or from a release tarball
-// without a .git dir always reports "unknown" here. Add an -ldflags -X
-// version override at release-build time if that ever needs distinguishing.
 func versionString() string {
+	if version != "" {
+		return version
+	}
 	info, ok := readBuildInfo()
 	if !ok {
 		return "unknown"

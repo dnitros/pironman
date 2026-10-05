@@ -73,3 +73,13 @@ func TestVersionStringUsesBuildInfoRevision(t *testing.T) {
 		t.Fatalf("versionString() = %q, want %q", got, want)
 	}
 }
+
+func TestVersionStringPrefersStampedReleaseTag(t *testing.T) {
+	old := version
+	version = "v1.2.0"
+	t.Cleanup(func() { version = old })
+
+	if got := versionString(); got != "v1.2.0" {
+		t.Fatalf("versionString() = %q, want the stamped tag v1.2.0", got)
+	}
+}

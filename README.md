@@ -2,6 +2,13 @@
 
 CLI and daemon for the Pironman 5 case (base edition) on a Raspberry Pi 5. It controls the RGB strip, the OLED display and the case fan, and handles the power button.
 
+> [!IMPORTANT]
+> This is an independent Go rewrite of SunFounder's Pironman 5 software, [sunfounder/pironman5](https://github.com/sunfounder/pironman5), without its web dashboard. It is not affiliated with or endorsed by SunFounder.
+>
+> I built it for my own use, on my own Raspberry Pi 5 and Pironman 5 (base edition). It has not been tested on the Pironman 5 Pro, Max, Pro Max or Mini.
+>
+> It isn't perfect and may not work, or may break things, on your machine. It comes with no guarantees; use it at your own risk.
+
 ## Requirements
 
 - Raspberry Pi 5 with a systemd-based OS.
@@ -20,12 +27,21 @@ make install   # build, copy to /usr/local/bin, install, enable and start the se
 
 ## Update
 
-The service already points at `/usr/local/bin/pironman`, so an update only replaces the binary and restarts the service:
+```sh
+sudo pironman update          # install the latest GitHub release; restarts the service if it's running
+pironman update --check       # only report whether a newer release exists
+make update                   # or rebuild from a source checkout instead
+```
 
-On the Pi:
+`pironman update` verifies the download against the release's SHA-256 checksum and swaps the binary in one step. A failed download or checksum leaves the installed binary unchanged.
+
+## Releasing
+
+Push a `v*` tag. The release workflow tests, builds `pironman-linux-arm64`, and publishes it with `checksums.txt`:
 
 ```sh
-make update   # rebuild, replace the binary, restart the service, print the version
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
 ## Usage
@@ -34,7 +50,8 @@ make update   # rebuild, replace the binary, restart the service, print the vers
 |---|---|
 | `pironman status` | Show RGB, OLED, case fan and PWM fan state |
 | `pironman doctor` | Check the daemon, service, socket and config |
-| `pironman version` | Show the build's git SHA |
+| `pironman version` | Show the release tag, or the git SHA for a local build |
+| `sudo pironman update [--check]` | Install the latest release; restarts the service if it's running |
 | `pironman rgb on\|off` | Turn the RGB strip on or off |
 | `pironman rgb color <#hex>` | Set a solid color |
 | `pironman rgb brightness <0-100>` | Set brightness |
@@ -89,3 +106,7 @@ The daemon needs the real hardware, so the hardware-facing packages are tested a
 ```sh
 PIRONMAN_SOCKET_PATH=/tmp/pironman.sock ./pironman doctor
 ```
+
+## License
+
+[GPL-3.0](LICENSE). The embedded Minecraftia font is CC BY-SA; see [its licence](internal/oled/fonts/minecraftia/LICENSE).

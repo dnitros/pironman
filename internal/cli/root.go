@@ -33,6 +33,7 @@ func NewRootCmd() *cobra.Command {
 	root.AddCommand(newOLEDCmd())
 	root.AddCommand(newFanCmd())
 	root.AddCommand(newStatusCmd())
+	root.AddCommand(newUpdateCmd())
 
 	return root
 }
