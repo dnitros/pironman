@@ -5,13 +5,13 @@ Go CLI and root-owned daemon for a Pironman 5 case (base edition) on a Raspberry
 ## Commands
 
 ```sh
-go build -o pironman ./cmd/pironman
-go test ./...
-go test ./internal/oled/ -run TestName
-go vet ./...
+make build                              # build-pi cross-compiles for linux/arm64
+make test
+make vet
+go test ./internal/oled/ -run TestName  # single test
 ```
 
-`go vet` is the only linter. `daemon run` needs the real hardware, so hardware-facing code is tested against hand-rolled fakes. `*_internal_test.go` files are white-box tests in the same package; plain `*_test.go` files are black-box. To run CLI commands without root, set `PIRONMAN_SOCKET_PATH=/tmp/pironman.sock`.
+`make` lists every target, including `install`, `update` and `deploy HOST=<ssh-host>` for the Pi. `go vet` is the only linter. `daemon run` needs the real hardware, so hardware-facing code is tested against hand-rolled fakes. `*_internal_test.go` files are white-box tests in the same package; plain `*_test.go` files are black-box. To run CLI commands without root, set `PIRONMAN_SOCKET_PATH=/tmp/pironman.sock`.
 
 ## Architecture
 
