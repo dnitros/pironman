@@ -1,69 +1,51 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-## What this is
-
-A Go CLI + daemon that controls a Pironman 5 case (base edition) on a Raspberry Pi 5: WS2812 RGB strip (SPI), SSD1306 OLED (I2C), case-fan relay (GPIO character device), and the power button (evdev). Requires Go 1.27.1+.
+Go CLI and root-owned daemon for a Pironman 5 case (base edition) on a Raspberry Pi 5. It controls the WS2812 RGB strip (SPI), the SSD1306 OLED (I2C), the case-fan relay (GPIO character device) and the power button (evdev). `README.md` covers install and usage.
 
 ## Commands
 
 ```sh
-go build -o pironman ./cmd/pironman   # build
-go test ./...                          # run all tests
-go test ./internal/rgb/...             # run one package's tests
-go test ./internal/rgb/ -run TestName  # run a single test
-go vet ./...                           # static checks
+go build -o pironman ./cmd/pironman
+go test ./...
+go test ./internal/oled/ -run TestName
+go vet ./...
 ```
 
-There is no Makefile or linter config beyond `go vet`.
-
-The daemon (`daemon run`) opens real hardware at startup, so it can't run standalone on a dev machine — `internal/hardware`, `internal/rgb`, `internal/oled`, `internal/fan`, and `internal/powerbutton` are unit-tested against hand-rolled fakes instead. Tests named `*_internal_test.go` are white-box (same package, exercise unexported helpers); plain `*_test.go` files are black-box.
-
-For local CLI/daemon testing without root:
-
-```sh
-PIRONMAN_SOCKET_PATH=/tmp/pironman.sock ./pironman doctor
-```
-
-See `README.md` for the full deployment flow (`daemon install`/`enable`/`start`, the `pironman` group, SPI/I2C enablement).
+`go vet` is the only linter. `daemon run` needs the real hardware, so hardware-facing code is tested against hand-rolled fakes. `*_internal_test.go` files are white-box tests in the same package; plain `*_test.go` files are black-box. To run CLI commands without root, set `PIRONMAN_SOCKET_PATH=/tmp/pironman.sock`.
 
 ## Architecture
 
-**Two processes, one socket.** The CLI and a root-owned daemon (`pironman daemon run`) talk over a Unix domain socket (`internal/ipc`, default `/run/pironman/pironman.sock`, override via `PIRONMAN_SOCKET_PATH`), exchanging newline-delimited JSON `Request`/`Response` frames. Traffic is low-frequency control commands, so plain JSON (inspectable with `socat`/`nc`, no codegen) is preferred over binary framing or an RPC framework. The socket is `root:pironman`-owned at `0660`; `daemon install` creates that group and adds the invoking user so the CLI doesn't need sudo for normal commands. A world-writable socket would let any local user drive the hardware, and per-connection `SO_PEERCRED` checks are more than a single-user Pi needs. The `daemon` subcommands themselves (`install`/`start`/`stop`/`enable`/`disable`/`uninstall`) always require sudo, enforced directly in `internal/cli/daemon.go`, independent of group membership.
+The CLI sends newline-delimited JSON requests to the daemon over a Unix socket (`internal/ipc`, default `/run/pironman/pironman.sock`). The socket is `root:pironman` at `0660`, so members of the `pironman` group need no `sudo`. The `daemon` subcommands always require root, checked in `internal/cli/daemon.go`.
 
-**Layering**, outside-in:
-1. `internal/cli` — cobra commands. Each CLI command (`rgb`, `oled`, `fan`, `status`, `doctor`, `daemon`) builds an `ipc.Request` and sends it over the socket via `internal/ipc` client code.
-2. `internal/cli/daemon.go` (`runDaemon`) — the daemon's composition root. Loads config, constructs each subsystem's store/machine, builds the IPC handler map, starts tick loops and the power-button watcher, then serves until `SIGINT`/`SIGTERM`.
-3. `internal/handlers` — one handler-building function per subsystem (`RGBHandlers`, `OLEDHandlers`, `FanHandlers`, `StatusHandler`). Each handler validates IPC args, persists the change to `internal/config` under a shared `*sync.Mutex`, then calls into the subsystem's store/machine. Persist-then-apply ordering matters: config is the source of truth restored on the next daemon start.
-4. Subsystem packages (`internal/rgb.Store`, `internal/oled.Machine`, `internal/fan.Machine`, `internal/powerbutton.Classifier`) — hold in-memory state behind their own mutex, apply it to a hardware interface, and expose it read-only. `oled.Machine` and `fan.Machine` expose a `Tick()` driven by the daemon's fixed-interval tick loops (`startTickLoop` in `daemon.go`); `powerbutton.Classifier` turns raw press/release events into the four classified `Event`s (click, double-click, long-press, long-press-released) that `dispatchPowerButtonEvent` routes to OLED page changes or shutdown. `rgb.Store` instead manages its own self-paced animation goroutine internally (started/stopped by `Store` methods, not by a daemon tick loop) while an animated style (e.g. `breathing`) is active, since each style's frame delay is derived live from its speed setting rather than a fixed interval.
-5. `internal/hardware` — thin interfaces (`Relay`, `WS2812Strip`, `PowerButtonWatcher`, ...) with real implementations behind `//go:build linux` and stub implementations behind `//go:build !linux` that return "unsupported on this platform" errors. This is what lets the package build (though not run its hardware path) on a non-Linux dev machine. GPIO lines are resolved by kernel-assigned name (e.g. `GPIO6`), not a fixed `/dev/gpiochipN` number, since the chip number varies across kernels/OS images.
+Layers, outside in:
 
-**Image conversion** (`internal/imageconv`, `internal/pbm`): stateless, hardware-free utility packages the `OLEDHandlers`' `oled.image` handler calls into before persisting a path onto `oled.Machine` — `imageconv.Convert`/`PersistImage` scale, dither, and write a 128x64 1-bit `.pbm` file; `pbm` decodes/encodes that format. Neither holds state or sits behind a hardware interface, unlike the layer-4 subsystem packages above.
+1. `internal/cli`: cobra commands. Most send one IPC request; `daemon` drives systemd and `version` runs locally.
+2. `runDaemon` in `internal/cli/daemon.go`: the composition root. It loads config, builds each subsystem, registers the IPC handlers, and starts the tick loops (`startTickLoop`) and the power-button watcher.
+3. `internal/handlers`: one function per subsystem (`RGBHandlers`, `OLEDHandlers`, `FanHandlers`, `StatusHandler`). A handler validates its arguments, saves the change to config, then applies it. Save before apply: config is what the daemon restores on its next start.
+4. Subsystems: `rgb.Store`, `oled.Machine`, `fan.Machine` and `powerbutton.Classifier`. Each guards its state with its own mutex and drives a `hardware` interface. The OLED and fan machines advance on `Tick()`. `rgb.Store` runs its own animation goroutine, because each style's frame delay depends on its speed setting. `dispatchPowerButtonEvent` routes classified press events to the OLED or to shutdown.
+5. `internal/hardware`: small interfaces with real implementations. The GPIO relay and power button have `//go:build !linux` stubs, so the module builds on macOS. GPIO lines are found by name (`GPIO6`), because the `/dev/gpiochipN` number varies between kernels.
 
-**OLED rendering**: each page lives in its own file (`mix.go`, `performance.go`, `ips.go`, `disk.go`) with its own `*_internal_test.go`. A page file holds a values function (stats snapshot → strings/percentages) and a render function (values → `*image.Gray`), so each half is tested on its own. Drawing helpers shared by every page (`drawText`, `drawBar`, `fillRect`, the fonts) live in `render.go`; a page file never depends on another page's file. Text is rendered from embedded TTFs via `golang.org/x/image/font/opentype`. Each font lives in its own `internal/oled/fonts/<family>/` directory alongside its own `LICENSE`, so adding a font never means splitting a shared licence file.
+**Config** (`internal/config`): one YAML file, `/etc/pironman/config.yaml` or `PIRONMAN_CONFIG_PATH`. `config.Default()` applies when the file is missing. Handlers change a copy, save it, then swap it in.
 
-**Config** (`internal/config`): a single YAML file (default `/etc/pironman/config.yaml`, override via `PIRONMAN_CONFIG_PATH`) holding RGB/OLED/fan settings, loaded with built-in defaults (`config.Default()`) if the file doesn't exist yet. Handlers mutate a copy, save it, then swap it in — never save partial state.
+**Shutdown**: after `ipc.Server.Serve` returns, `serveDaemon` runs `shutdownHooks`, which turn the RGB strip and fan off. `Serve` first waits for in-flight connections, so a hook never races a handler's hardware write. A failing hook is logged and the rest still run.
 
-**Daemon shutdown**: `serveDaemon` runs a list of `shutdownHooks` (closures) after `ipc.Server.Serve` returns, turning off RGB/fan so they don't stay energized when the daemon isn't managing them. `Server.Serve` drains in-flight connections via `sync.WaitGroup` first, so a hook never races a handler's hardware write. A hook's own failure is logged, not fatal, so it never blocks exit or later hooks.
+**OLED pages**: each page has its own file in `internal/oled` (`mix.go`, `performance.go`, `ips.go`, `disk.go`) with its own `*_internal_test.go`. A page file has a values function (stats → strings and percentages) and a render function (values → `*image.Gray`). Shared drawing (`drawText`, `drawBar`, `fillRect`, the fonts) lives in `render.go`. Page files depend only on `render.go`, never on each other. Fonts are embedded TTFs, each in `internal/oled/fonts/<family>/` with its own `LICENSE`.
 
-**Domain vocabulary**: the codebase uses these terms exactly, and they're easy to conflate:
+**Images**: `internal/imageconv` converts images to 128x64 1-bit `.pbm`, and `internal/pbm` reads and writes that format. Both are stateless and hardware-free.
 
-- **OLED page**: one of the full-screen contents: `mix`, `performance`, `ips`, `disk`, `image`. Not "screen" or "view".
-- **Page advance**: switching pages, only ever by a power-button press (click = next, double-click = previous), never by a timer.
-- **Content scroll**: cycling on a timer through several values *within* one page, such as IPs, disks or images. The page itself doesn't change.
-- **OLED rotation**: the display's physical orientation, `0` or `180` (`config.OLED.Rotation`). It flips every page's pixels. Never use "rotation" for page advance or content scroll.
-- **Press event**: one of `click` (wake/next page), `double-click` (previous page), `long-press` (shutdown-confirmation screen) and `long-press-released` (powering-off screen, then shutdown).
-- **PWM fan**: the Pi 5's own active cooler, governed by the kernel. This tool only reads its state and speed via sysfs.
-- **Case fan**: the Pironman case's fans on a GPIO relay, controlled together by one of five curves (`always_on` plus four temperature-gated). Their built-in RGB is powered by the same connector, so it follows the fan on/off.
-- **RGB strip**: the 4 WS2812 LEDs on the main board (SPI0/GPIO10), driven by `pironman rgb`.
+## Vocabulary
 
-## Agent skills
+Use these terms exactly:
 
-### Issue tracker
+- **OLED page**: a full-screen content: `mix`, `performance`, `ips`, `disk`, `image`.
+- **Page advance**: switching pages, only by power-button press (click = next, double-click = previous).
+- **Content scroll**: cycling on a timer through values within one page (IPs, disks, images).
+- **OLED rotation**: display orientation, `0` or `180`. It flips pixels; it's unrelated to paging.
+- **Press event**: `click`, `double-click`, `long-press` (shutdown prompt), `long-press-released` (shutdown).
+- **PWM fan**: the Pi 5's own cooler, kernel-controlled. Read-only here, via sysfs.
+- **Case fan**: the case's fans on the GPIO relay, run by one of five curves. Their built-in RGB follows the fan's power.
+- **RGB strip**: the 4 WS2812 LEDs on the main board, driven by `pironman rgb`.
 
-Issues live in Linear, team **Personal** (`PER`), project **Pironman 5**, via the `mcp__linear-server__*` tools. Each ticket gets one branch, named by its `gitBranchName`, and one PR on GitHub (`dnitros/pironman`, via `gh`). Status, QA and review summaries go on the Linear ticket, not the PR.
+## Issue tracking
 
-### Triage labels
-
-`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`, used as-is. A label that doesn't exist yet in Linear is created on first use.
+Linear, team **Personal** (`PER`), project **Pironman 5**, via the `mcp__linear-server__*` tools. Each ticket gets one branch named by its `gitBranchName` and one PR on `dnitros/pironman`. Status, QA and review summaries go on the Linear ticket. Triage labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`.

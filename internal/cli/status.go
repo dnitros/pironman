@@ -27,7 +27,7 @@ type StatusInfo struct {
 func newStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
-		Short: "Show the daemon's current RGB and OLED state",
+		Short: "Show the daemon's current RGB, OLED, case fan and PWM fan state",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			info, err := gatherStatus(ipc.SocketPath())
 			if err != nil {

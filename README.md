@@ -1,62 +1,84 @@
 # Pironman
 
-A CLI + daemon for controlling a Pironman 5 case (base edition) on a Raspberry Pi 5.
+CLI and daemon for the Pironman 5 case (base edition) on a Raspberry Pi 5. It controls the RGB strip, the OLED display and the case fan, and handles the power button.
 
-## Development
+## Requirements
 
-Requires Go 1.27.1+.
+- Raspberry Pi 5 with a systemd-based OS.
+- SPI and I2C enabled: `sudo raspi-config` → Interface Options, or `dtparam=spi=on` and `dtparam=i2c_arm=on` in `/boot/firmware/config.txt`.
+- Go 1.27.1 or later to build.
 
-```sh
-go build -o pironman ./cmd/pironman
-```
+## Install
 
-The CLI and daemon talk over a Unix domain socket (default `/run/pironman/pironman.sock`, override with `PIRONMAN_SOCKET_PATH`). `/run` needs root, so for local testing:
-
-```sh
-PIRONMAN_SOCKET_PATH=/tmp/pironman.sock ./pironman doctor
-```
-
-`daemon run` opens the Pironman 5's WS2812 RGB strip over SPI, SSD1306 OLED over I2C, case-fan relay over a GPIO character device, and the power button over `/dev/input` (evdev) at startup, so it only runs on the actual case hardware with those interfaces available — it can't be smoke-tested standalone on a dev machine anymore. `internal/hardware`, `internal/rgb`, `internal/oled`, `internal/fan`, and `internal/powerbutton` are unit-tested against hand-rolled fakes instead (see `go test` below).
-
-Run tests with:
-
-```sh
-go test ./...
-```
-
-`./pironman version` prints the build's git short SHA (with a `+dirty` suffix if the tree had uncommitted changes at build time), embedded automatically by `go build` via `runtime/debug.ReadBuildInfo()`. Prints `unknown` if built without VCS info (e.g. outside a git repo, or with `-buildvcs=false`).
-
-## Deployment (on a Raspberry Pi)
-
-`daemon install` embeds the currently running binary's own path into the systemd unit's `ExecStart`, so put the binary at its final location before installing:
+`daemon install` writes the binary's current path into the systemd unit, so copy it into place first:
 
 ```sh
 go build -o pironman ./cmd/pironman
 sudo cp pironman /usr/local/bin/pironman
-```
-
-Then install, enable, and start the service:
-
-```sh
 sudo pironman daemon install
-sudo pironman daemon enable  # survive a reboot
-sudo pironman daemon start   # run it now
+sudo pironman daemon enable   # start on boot
+sudo pironman daemon start    # start now
 ```
 
-`daemon install` never implicitly enables or starts the service — `enable` (boot-time autostart) and `start` (run now) are separate, explicit steps.
+`daemon install` adds you to the `pironman` group, which can use the control socket without `sudo`. Log out and back in for it to take effect. If it can't add you, it prints the `usermod` command to run.
 
-`daemon install` creates the `pironman` group and adds the invoking user (`$SUDO_USER`) to it automatically — start a new login session before using socket-based commands like `doctor` without `sudo` (this doesn't apply to the `daemon` subcommands below, which always need `sudo` regardless of group membership). If `$SUDO_USER` isn't set, or the automatic add fails, it prints the `usermod` command to run manually instead:
+## Usage
+
+| Command | Does |
+|---|---|
+| `pironman status` | Show RGB, OLED, case fan and PWM fan state |
+| `pironman doctor` | Check the daemon, service, socket and config |
+| `pironman version` | Show the build's git SHA |
+| `pironman rgb on\|off` | Turn the RGB strip on or off |
+| `pironman rgb color <#hex>` | Set a solid color |
+| `pironman rgb brightness <0-100>` | Set brightness |
+| `pironman rgb style <name> [--speed 0-100]` | `solid`, `breathing`, `flow`, `flow_reverse`, `rainbow`, `rainbow_reverse`, `hue_cycle`, `flow_fade`, `flow_fade_reverse` |
+| `pironman oled on\|off` | Wake the display on the `mix` page, or blank it |
+| `pironman oled page <name\|next\|prev>` | Show a page from `page_order` |
+| `pironman oled image [--interval s] [--invert] <path>...` | Show `.png`, `.jpg` or 128x64 `.pbm` images on the `image` page |
+| `pironman oled rotation <0\|180>` | Flip the display |
+| `pironman oled sleep-timeout <seconds>` | Blank after this long idle, 0–3600 (`0` never blanks) |
+| `pironman fan mode <name>` | `always_on`, `performance`, `cool`, `balanced`, `quiet` |
+| `sudo pironman daemon <install\|uninstall\|start\|stop\|enable\|disable>` | Manage the systemd service |
+
+Power button: click shows the next OLED page, double-click shows the previous one. Hold it to show a shutdown prompt, then release to shut the Pi down.
+
+Stopping the daemon turns the RGB strip and case fan off. They return to their saved state when it starts again.
+
+## Configuration
+
+`/etc/pironman/config.yaml`, or the path in `PIRONMAN_CONFIG_PATH`. CLI commands update it. The defaults, used when the file doesn't exist:
+
+```yaml
+rgb:
+  enabled: true
+  color: "#00ff00"
+  brightness: 80
+  style: solid
+  speed: 50
+oled:
+  enabled: true
+  sleep_timeout_seconds: 10
+  scroll_interval_seconds: 3
+  page_order: [mix, performance, ips, disk]   # add "image" to use oled image
+  image_interval_seconds: 5
+  rotation: 0
+fan:
+  case_fan_state: balanced
+```
+
+Images from `oled image` are stored in `images/` next to the config file. Changes to `page_order` take effect when the daemon restarts.
+
+## Development
 
 ```sh
-sudo usermod -aG pironman <your-username>
+go build -o pironman ./cmd/pironman
+go test ./...
+go vet ./...
 ```
 
-Manage the service afterward with `daemon stop`, `daemon start`, `daemon enable`, `daemon disable`, or `daemon uninstall` — all six `daemon` subcommands enforce a `sudo` requirement directly in the CLI. This matches `systemctl`'s own default polkit policy, which requires admin authentication to manage a unit regardless of group membership — so the `pironman` group (which only governs the control-socket permissions) was never going to grant passwordless access to `start`/`stop`/`enable`/`disable`, and pironman now requires `sudo` outright rather than relying on that external policy. `daemon uninstall` also disables the service as part of cleanup.
+The daemon needs the real hardware, so the hardware-facing packages are tested against fakes. To try CLI commands without root, point them at another socket:
 
-Stopping the daemon — via `daemon stop`, a system shutdown/reboot, or `systemctl restart pironman` — turns off the RGB strip and de-energizes the case-fan relay, since their power stays live independently of the Pi's own running state. A restart therefore flashes the strip off then on (and drops the fan relay briefly) rather than leaving them running unmanaged, since the daemon can't distinguish a restart from a shutdown from a bare `SIGTERM`. The persisted RGB/fan config is untouched, so both return to their last configured state the next time the daemon starts.
-
-All `daemon` subcommands (and `doctor`) detect whether `systemctl` is on `$PATH` first. On a non-systemd machine (e.g. macOS, or a systemd-less Linux distro), `daemon install`/`uninstall`/`start`/`stop`/`enable`/`disable` fail immediately with a clear "unsupported platform" message instead of a raw exec error, and `doctor` reports `platform: unsupported` instead of hard-erroring.
-
-Config lives at `/etc/pironman/config.yaml` by default (override with `PIRONMAN_CONFIG_PATH`).
-
-The daemon drives the onboard WS2812 RGB strip over SPI and the SSD1306 OLED over I2C, so both must be enabled first (`sudo raspi-config` → Interface Options → SPI and I2C, or `dtparam=spi=on`/`dtparam=i2c_arm=on` in `/boot/firmware/config.txt`) — otherwise `daemon start` fails to open `/dev/spidev0.0` or `/dev/i2c-1`. The case-fan relay uses the Linux GPIO character-device ABI (`/dev/gpiochip*`), which needs no equivalent enable step; it resolves the relay's line by its kernel-assigned name (`GPIO6`) rather than a fixed chip number, since which `/dev/gpiochipN` it lands on varies across kernels/OS images.
+```sh
+PIRONMAN_SOCKET_PATH=/tmp/pironman.sock ./pironman doctor
+```
