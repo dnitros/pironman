@@ -60,23 +60,27 @@ func mixValues(snap sysstats.Snapshot, scrollIdx int) mixInfo {
 }
 
 func mixIPs(ifaces map[string]string) []string {
-	lan := cmp.Or(firstIPWithPrefix(ifaces, "eth"), firstIPWithPrefix(ifaces, "wlan"))
+	found := firstIPWithPrefix(ifaces, "eth", "wlan", "tailscale")
+	lan := cmp.Or(found["eth"], found["wlan"])
 	if lan == "" {
 		return []string{"OFFLINE"}
 	}
-	if ts := firstIPWithPrefix(ifaces, "tailscale"); ts != "" {
+	if ts := found["tailscale"]; ts != "" {
 		return []string{lan, ts}
 	}
 	return []string{lan}
 }
 
-func firstIPWithPrefix(ifaces map[string]string, prefix string) string {
+func firstIPWithPrefix(ifaces map[string]string, prefixes ...string) map[string]string {
+	found := make(map[string]string, len(prefixes))
 	for _, name := range slices.Sorted(maps.Keys(ifaces)) {
-		if strings.HasPrefix(name, prefix) {
-			return ifaces[name]
+		for _, prefix := range prefixes {
+			if _, ok := found[prefix]; !ok && strings.HasPrefix(name, prefix) {
+				found[prefix] = ifaces[name]
+			}
 		}
 	}
-	return ""
+	return found
 }
 
 func usageLabel(prefix string, used, total uint64) string {
