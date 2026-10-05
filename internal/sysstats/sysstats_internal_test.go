@@ -114,6 +114,33 @@ func TestProcSourceSnapshotReportsMemAndTempAndInterfaces(t *testing.T) {
 	}
 }
 
+func TestProcSourceSnapshotSkipsDockerBridgeInterfaces(t *testing.T) {
+	dir := t.TempDir()
+	statPath := writeFixture(t, dir, "stat", "cpu  100 0 50 800 20 0 0 0 0 0\n")
+	thermalPath := writeFixture(t, dir, "temp", "45678\n")
+	meminfoPath := writeFixture(t, dir, "meminfo", "MemTotal:        1000 kB\nMemAvailable:     400 kB\n")
+	mountsPath := writeFixture(t, dir, "mounts", "")
+
+	old := listInterfaces
+	listInterfaces = func() ([]netIface, error) {
+		return []netIface{
+			{Name: "eth0", IP: "192.168.1.5"},
+			{Name: "docker0", IP: "172.17.0.1"},
+			{Name: "br-116df880ad4d", IP: "172.18.0.1"},
+			{Name: "br-71fd768a213c", IP: "172.19.0.1"},
+		}, nil
+	}
+	t.Cleanup(func() { listInterfaces = old })
+
+	snap, err := NewProcSource(statPath, thermalPath, meminfoPath, mountsPath).Snapshot()
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	if len(snap.Interfaces) != 1 || snap.Interfaces["eth0"] != "192.168.1.5" {
+		t.Fatalf("Interfaces = %v, want only eth0", snap.Interfaces)
+	}
+}
+
 func TestProcSourceSnapshotComputesCPUPercentFromDelta(t *testing.T) {
 	dir := t.TempDir()
 	statPath := filepath.Join(dir, "stat")

@@ -4,49 +4,11 @@ import (
 	"testing"
 
 	"golang.org/x/image/font"
-	"golang.org/x/image/font/basicfont"
 	"golang.org/x/image/math/fixed"
 
 	"github.com/dnitros/pironman/internal/hardware"
 	"github.com/dnitros/pironman/internal/sysstats"
 )
-
-func TestMixLinesShowsDisconnectedWhenNoInterfaces(t *testing.T) {
-	snap := sysstats.Snapshot{CPUPercent: 12, CPUTempC: 45.6, MemPercent: 33}
-
-	lines := mixLines(snap, 0)
-
-	if lines[0] != "disconnected" {
-		t.Fatalf("lines[0] = %q, want %q", lines[0], "disconnected")
-	}
-}
-
-func TestMixLinesShowsInterfaceNameAndIP(t *testing.T) {
-	snap := sysstats.Snapshot{Interfaces: map[string]string{"eth0": "192.168.1.5"}}
-
-	lines := mixLines(snap, 0)
-
-	if lines[0] != "eth0 192.168.1.5" {
-		t.Fatalf("lines[0] = %q, want %q", lines[0], "eth0 192.168.1.5")
-	}
-}
-
-func TestMixLinesCyclesInterfacesByScrollIndexInSortedOrder(t *testing.T) {
-	snap := sysstats.Snapshot{Interfaces: map[string]string{
-		"wlan0": "10.0.0.2",
-		"eth0":  "192.168.1.5",
-	}}
-
-	if got := mixLines(snap, 0)[0]; got != "eth0 192.168.1.5" {
-		t.Fatalf("scrollIdx=0: got %q, want eth0 first (sorted order)", got)
-	}
-	if got := mixLines(snap, 1)[0]; got != "wlan0 10.0.0.2" {
-		t.Fatalf("scrollIdx=1: got %q, want wlan0 second (sorted order)", got)
-	}
-	if got := mixLines(snap, 2)[0]; got != "eth0 192.168.1.5" {
-		t.Fatalf("scrollIdx=2: got %q, want wraparound back to eth0", got)
-	}
-}
 
 func TestDiskLinesShowsDetectionErrorWhenNoDisksFound(t *testing.T) {
 	lines := diskLines(sysstats.Snapshot{}, 0)
@@ -119,7 +81,7 @@ func TestDiskLinesFitDisplayWidthForExtremeSizes(t *testing.T) {
 		if fitted := fitLine(line); fitted != line {
 			t.Fatalf("line %q was truncated to %q, want it to already fit the display width", line, fitted)
 		}
-		if font.MeasureString(basicfont.Face7x13, line) > fixed.I(hardware.SSD1306Width) {
+		if font.MeasureString(textFace, line) > fixed.I(hardware.SSD1306Width) {
 			t.Fatalf("line %q measures wider than the %dpx display", line, hardware.SSD1306Width)
 		}
 	}
@@ -182,34 +144,18 @@ func TestFitLineLeavesShortLinesUnchanged(t *testing.T) {
 }
 
 func TestFitLineTruncatesToFitDisplayWidth(t *testing.T) {
-	long := "wlan0 192.168.1.100"
-	if font.MeasureString(basicfont.Face7x13, long) <= fixed.I(hardware.SSD1306Width) {
+	long := "enx0123456789ab 192.168.100.100"
+	if font.MeasureString(textFace, long) <= fixed.I(hardware.SSD1306Width) {
 		t.Fatalf("test fixture %q must be wider than the display to be meaningful", long)
 	}
 
 	got := fitLine(long)
 
-	if font.MeasureString(basicfont.Face7x13, got) > fixed.I(hardware.SSD1306Width) {
+	if font.MeasureString(textFace, got) > fixed.I(hardware.SSD1306Width) {
 		t.Fatalf("fitLine(%q) = %q, still too wide for the display", long, got)
 	}
 	if got == long {
 		t.Fatalf("expected fitLine to actually truncate %q", long)
-	}
-}
-
-func TestMixLinesFormatsCPUTempAndMem(t *testing.T) {
-	snap := sysstats.Snapshot{CPUPercent: 12.4, CPUTempC: 45.67, MemPercent: 33.2}
-
-	lines := mixLines(snap, 0)
-
-	if lines[1] != "CPU 12%" {
-		t.Fatalf("lines[1] = %q, want %q", lines[1], "CPU 12%")
-	}
-	if lines[2] != "45.7C" {
-		t.Fatalf("lines[2] = %q, want %q", lines[2], "45.7C")
-	}
-	if lines[3] != "RAM 33%" {
-		t.Fatalf("lines[3] = %q, want %q", lines[3], "RAM 33%")
 	}
 }
 
@@ -235,5 +181,15 @@ func TestPerformanceLinesFormatsCPUMemAndTemp(t *testing.T) {
 	}
 	if lines[3] != "45.7C" {
 		t.Fatalf("lines[3] = %q, want %q", lines[3], "45.7C")
+	}
+}
+
+func TestTextRendersOnlyFullyLitOrDarkPixels(t *testing.T) {
+	img := renderLines([]string{"CPU 0.5% 35.3°C", "RAM: 0.6/7.9 GB", "DISK: 7.3/14.0", "DISCONNECTED"})
+
+	for i, v := range img.Pix {
+		if v != 0 && v != 255 {
+			t.Fatalf("pixel %d has gray level %d, want 0 or 255 so the 1-bit threshold loses nothing", i, v)
+		}
 	}
 }
