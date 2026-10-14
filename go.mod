@@ -4,7 +4,7 @@ go 1.27.1
 
 require (
 	github.com/spf13/cobra v1.10.2
-	github.com/warthog618/go-gpiocdev v0.9.1
+	github.com/warthog618/go-gpiocdev v0.9.2
 	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/image v0.46.0
 	periph.io/x/conn/v3 v3.7.3
